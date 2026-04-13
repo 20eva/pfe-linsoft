@@ -1,0 +1,11 @@
+
+vars/secrets.yml
+
+inventory/group_vars/all/vault.yml
+
+*.retry
+
+*.log
+
+.vault_pass
+

@@ -1,0 +1,73 @@
+
+---
+
+- name: Enable and start httpd
+
+  systemd:
+
+    name: httpd
+
+    state: started
+
+    enabled: yes
+
+
+
+- name: Create ignition directory
+
+  file:
+
+    path: /var/www/html/ignition
+
+    state: directory
+
+    mode: '0755'
+
+    owner: apache
+
+    group: apache
+
+
+
+- name: Set SELinux context
+
+  command: restorecon -Rv /var/www/html
+
+  changed_when: false
+
+  when: ansible_selinux.status == 'enabled'
+
+
+
+- name: Create test file
+
+  copy:
+
+    content: "OKD Bastion HTTP Server - Ready\n"
+
+    dest: /var/www/html/test.txt
+
+    mode: '0644'
+
+
+
+- name: Test HTTP server
+
+  uri:
+
+    url: "http://{{ bastion_ip }}/test.txt"
+
+    return_content: yes
+
+  register: http_test
+
+  delegate_to: localhost
+
+
+
+- name: Display HTTP test result
+
+  debug:
+
+    msg: "HTTP Server: {{ 'OK' if 'Ready' in http_test.content else 'FAILED' }}"
+

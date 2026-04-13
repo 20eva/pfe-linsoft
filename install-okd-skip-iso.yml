@@ -1,0 +1,331 @@
+
+---
+
+- name: Download OKD Tools (Skip ISO)
+
+  hosts: localhost
+
+  connection: local
+
+  become: yes
+
+  vars_files:
+
+    - vars/main.yml
+
+  tasks:
+
+    - name: Create tools directory
+
+      file:
+
+        path: "{{ ansible_env.HOME }}/okd-tools"
+
+        state: directory
+
+        mode: '0755'
+
+
+
+    - name: Check if openshift-install exists
+
+      stat:
+
+        path: "/usr/local/bin/openshift-install"
+
+      register: installer_exists
+
+
+
+    - name: Download openshift-install
+
+      get_url:
+
+        url: "{{ okd_installer_url }}"
+
+        dest: "{{ ansible_env.HOME }}/okd-tools/openshift-install.tar.gz"
+
+        mode: '0644'
+
+      when: not installer_exists.stat.exists
+
+
+
+    - name: Download oc client
+
+      get_url:
+
+        url: "{{ okd_client_url }}"
+
+        dest: "{{ ansible_env.HOME }}/okd-tools/oc-client.tar.gz"
+
+        mode: '0644'
+
+      when: not installer_exists.stat.exists
+
+
+
+    - name: Extract openshift-install
+
+      unarchive:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/openshift-install.tar.gz"
+
+        dest: "{{ ansible_env.HOME }}/okd-tools/"
+
+        remote_src: yes
+
+        creates: "{{ ansible_env.HOME }}/okd-tools/openshift-install"
+
+      when: not installer_exists.stat.exists
+
+
+
+    - name: Extract oc client
+
+      unarchive:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/oc-client.tar.gz"
+
+        dest: "{{ ansible_env.HOME }}/okd-tools/"
+
+        remote_src: yes
+
+        creates: "{{ ansible_env.HOME }}/okd-tools/oc"
+
+      when: not installer_exists.stat.exists
+
+
+
+    - name: Move openshift-install to /usr/local/bin
+
+      copy:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/openshift-install"
+
+        dest: /usr/local/bin/openshift-install
+
+        mode: '0755'
+
+        remote_src: yes
+
+      when: not installer_exists.stat.exists
+
+
+
+    - name: Move oc to /usr/local/bin
+
+      copy:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/oc"
+
+        dest: /usr/local/bin/oc
+
+        mode: '0755'
+
+        remote_src: yes
+
+      when: not installer_exists.stat.exists
+
+
+
+    - name: Move kubectl to /usr/local/bin
+
+      copy:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/kubectl"
+
+        dest: /usr/local/bin/kubectl
+
+        mode: '0755'
+
+        remote_src: yes
+
+      when: not installer_exists.stat.exists
+
+
+
+- name: Generate Ignition Config
+
+  hosts: localhost
+
+  connection: local
+
+  become: no
+
+  vars_files:
+
+    - vars/main.yml
+
+  tasks:
+
+    - name: Create OKD install directory
+
+      file:
+
+        path: "{{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}"
+
+        state: directory
+
+        mode: '0755'
+
+
+
+    - name: Generate SSH key if not exists
+
+      command: "ssh-keygen -t ed25519 -N '' -f {{ ansible_env.HOME }}/.ssh/id_ed25519"
+
+      args:
+
+        creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
+
+
+
+    - name: Read SSH public key
+
+      slurp:
+
+        src: "{{ ansible_env.HOME }}/.ssh/id_ed25519.pub"
+
+      register: ssh_pub_key
+
+
+
+    - name: Create install-config.yaml
+
+      copy:
+
+        content: |
+
+          apiVersion: v1
+
+          baseDomain: {{ okd_base_domain }}
+
+          metadata:
+
+            name: {{ okd_cluster_name }}
+
+          compute:
+
+            - name: worker
+
+              replicas: 0
+
+          controlPlane:
+
+            name: master
+
+            replicas: 1
+
+            architecture: amd64
+
+          networking:
+
+            clusterNetwork:
+
+              - cidr: 10.128.0.0/14
+
+                hostPrefix: 23
+
+            machineNetwork:
+
+              - cidr: {{ network_cidr }}
+
+            serviceNetwork:
+
+              - 172.30.0.0/16
+
+            networkType: OVNKubernetes
+
+          platform:
+
+            none: {}
+
+          bootstrapInPlace:
+
+            installationDisk: /dev/vda
+
+          pullSecret: '{{ okd_pull_secret }}'
+
+          sshKey: '{{ ssh_pub_key["content"] | b64decode }}'
+
+        dest: "{{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}/install-config.yaml"
+
+        mode: '0644'
+
+
+
+    - name: Generate Ignition config
+
+      command: "openshift-install create single-node-ignition-config --dir={{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}"
+
+      register: ignition_result
+
+      failed_when: ignition_result.rc != 0
+
+
+
+    - name: Create ignition directory on Bastion
+
+      file:
+
+        path: /var/www/html/ignition
+
+        state: directory
+
+        mode: '0755'
+
+        owner: apache
+
+        group: apache
+
+      delegate_to: bastion
+
+      become: yes
+
+
+
+    - name: Copy Ignition file to Bastion
+
+      copy:
+
+        src: "{{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}/bootstrap-in-place-for-live-iso.ign"
+
+        dest: /var/www/html/ignition/bootstrap.ign
+
+        mode: '0644'
+
+        owner: apache
+
+        group: apache
+
+      delegate_to: bastion
+
+      become: yes
+
+
+
+    - name: Display Ignition URL
+
+      debug:
+
+        msg: "✅ Ignition file available at: http://{{ bastion_ip }}:8080/ignition/bootstrap.ign"
+
+
+
+- name: Create OKD Node VM
+
+  hosts: localhost
+
+  connection: local
+
+  become: yes
+
+  vars_files:
+
+    - vars/main.yml
+
+  roles:
+
+    - create-okd-node
+

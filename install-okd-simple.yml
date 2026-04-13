@@ -1,0 +1,147 @@
+
+---
+
+- name: Download SCOS ISO
+
+  hosts: localhost
+
+  become: yes
+
+  tasks:
+
+    - name: Create ISO directory
+
+      file:
+
+        path: "{{ iso_download_dir }}"
+
+        state: directory
+
+        mode: '0755'
+
+
+
+    - name: Download SCOS ISO
+
+      get_url:
+
+        url: "{{ scos_iso_url }}"
+
+        dest: "{{ iso_download_dir }}/{{ scos_iso_name }}"
+
+        mode: '0644'
+
+        timeout: 3600
+
+
+
+- name: Download OKD Tools
+
+  hosts: localhost
+
+  become: yes
+
+  tasks:
+
+    - name: Create tools directory
+
+      file:
+
+        path: "{{ ansible_env.HOME }}/okd-tools"
+
+        state: directory
+
+
+
+    - name: Download openshift-install
+
+      get_url:
+
+        url: "{{ okd_installer_url }}"
+
+        dest: "{{ ansible_env.HOME }}/okd-tools/openshift-install.tar.gz"
+
+
+
+    - name: Extract openshift-install
+
+      unarchive:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/openshift-install.tar.gz"
+
+        dest: "{{ ansible_env.HOME }}/okd-tools/"
+
+        remote_src: yes
+
+
+
+    - name: Copy to /usr/local/bin
+
+      copy:
+
+        src: "{{ ansible_env.HOME }}/okd-tools/openshift-install"
+
+        dest: /usr/local/bin/openshift-install
+
+        mode: '0755'
+
+        remote_src: yes
+
+
+
+- name: Create OKD Node VM
+
+  hosts: localhost
+
+  become: yes
+
+  tasks:
+
+    - name: Check if VM exists
+
+      command: virsh list --all --name
+
+      register: existing_vms
+
+      changed_when: false
+
+
+
+    - name: Create disk image
+
+      command: qemu-img create -f qcow2 {{ libvirt_pool_path }}/okd-node.qcow2 {{ okd_node_disk }}G
+
+      args:
+
+        creates: "{{ libvirt_pool_path }}/okd-node.qcow2"
+
+
+
+    - name: Create VM
+
+      command: >
+
+        virt-install
+
+        --name okd-node
+
+        --ram {{ okd_node_ram }}
+
+        --vcpus {{ okd_node_vcpus }}
+
+        --disk path={{ libvirt_pool_path }}/okd-node.qcow2,format=qcow2,bus=virtio
+
+        --network network={{ libvirt_network }},mac={{ okd_node_mac }}
+
+        --graphics vnc,listen=0.0.0.0
+
+        --os-variant fedora-coreos-stable
+
+        --cdrom {{ iso_download_dir }}/{{ scos_iso_name }}
+
+        --noautoconsole
+
+        --boot uefi
+
+      when: "'okd-node' not in existing_vms.stdout"
+

@@ -1,0 +1,69 @@
+
+---
+
+- name: Backup original HAProxy config
+
+  copy:
+
+    src: /etc/haproxy/haproxy.cfg
+
+    dest: /etc/haproxy/haproxy.cfg.backup
+
+    remote_src: yes
+
+    force: no
+
+
+
+- name: Deploy HAProxy configuration
+
+  template:
+
+    src: haproxy.cfg.j2
+
+    dest: /etc/haproxy/haproxy.cfg
+
+    mode: '0644'
+
+    validate: 'haproxy -f %s -c'
+
+  notify: restart haproxy
+
+
+
+- name: Enable and start HAProxy
+
+  systemd:
+
+    name: haproxy
+
+    state: started
+
+    enabled: yes
+
+
+
+- name: Flush handlers to restart haproxy
+
+  meta: flush_handlers
+
+
+
+- name: Verify HAProxy is listening on required ports
+
+  wait_for:
+
+    port: "{{ item }}"
+
+    timeout: 10
+
+  loop:
+
+    - 6443
+
+    - 22623
+
+    - 80
+
+    - 443
+

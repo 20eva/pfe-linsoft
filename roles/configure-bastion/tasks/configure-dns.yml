@@ -1,0 +1,107 @@
+
+---
+
+- name: Backup original dnsmasq config
+
+  copy:
+
+    src: /etc/dnsmasq.conf
+
+    dest: /etc/dnsmasq.conf.backup
+
+    remote_src: yes
+
+    force: no
+
+
+
+- name: Create dnsmasq.d directory
+
+  file:
+
+    path: /etc/dnsmasq.d
+
+    state: directory
+
+    mode: '0755'
+
+
+
+- name: Deploy dnsmasq OKD configuration
+
+  template:
+
+    src: dnsmasq-okd.conf.j2
+
+    dest: /etc/dnsmasq.d/okd.conf
+
+    mode: '0644'
+
+  notify: restart dnsmasq
+
+
+
+- name: Enable and start dnsmasq
+
+  systemd:
+
+    name: dnsmasq
+
+    state: started
+
+    enabled: yes
+
+
+
+- name: Flush handlers to restart dnsmasq
+
+  meta: flush_handlers
+
+
+
+- name: Wait for dnsmasq to be ready
+
+  wait_for:
+
+    port: 53
+
+    timeout: 10
+
+
+
+- name: Test DNS - API endpoint
+
+  command: dig @127.0.0.1 api.{{ okd_domain }} +short
+
+  register: dns_test_api
+
+  changed_when: false
+
+  failed_when: okd_node_ip not in dns_test_api.stdout
+
+
+
+- name: Test DNS - Apps wildcard
+
+  command: dig @127.0.0.1 test.apps.{{ okd_domain }} +short
+
+  register: dns_test_apps
+
+  changed_when: false
+
+  failed_when: okd_node_ip not in dns_test_apps.stdout
+
+
+
+- name: Display DNS test results
+
+  debug:
+
+    msg: |
+
+      DNS Configuration Successful:
+
+      ✓ api.{{ okd_domain }} → {{ okd_node_ip }}
+
+      ✓ *.apps.{{ okd_domain }} → {{ okd_node_ip }}
+

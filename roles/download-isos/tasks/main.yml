@@ -1,0 +1,67 @@
+
+---
+
+- name: Create ISO download directory
+
+  file:
+
+    path: "{{ iso_download_dir }}"
+
+    state: directory
+
+    mode: '0755'
+
+
+
+- name: Check if Rocky Linux ISO exists
+
+  stat:
+
+    path: "{{ iso_download_dir }}/{{ rocky_iso_name }}"
+
+  register: rocky_iso_stat
+
+
+
+- name: Download Rocky Linux 9 ISO
+
+  get_url:
+
+    url: "{{ rocky_iso_url }}"
+
+    dest: "{{ iso_download_dir }}/{{ rocky_iso_name }}"
+
+    mode: '0644'
+
+    timeout: 3600
+
+  when: not rocky_iso_stat.stat.exists
+
+  register: rocky_download
+
+
+
+- name: Display ISO download status
+
+  debug:
+
+    msg: "Rocky Linux ISO: {{ 'Downloaded' if rocky_download.changed else 'Already exists' }}"
+
+
+
+- name: Verify ISO file size
+
+  stat:
+
+    path: "{{ iso_download_dir }}/{{ rocky_iso_name }}"
+
+  register: iso_verification
+
+
+
+- name: Display ISO information
+
+  debug:
+
+    msg: "ISO Size: {{ (iso_verification.stat.size / 1024 / 1024 / 1024) | round(2) }} GB"
+

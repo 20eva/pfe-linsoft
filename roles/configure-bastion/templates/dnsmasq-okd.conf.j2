@@ -1,0 +1,41 @@
+
+# OKD DNS Configuration for {{ okd_domain }}
+
+interface=eth0
+
+bind-interfaces
+
+
+
+# Domain
+
+domain={{ okd_domain }}
+
+
+
+# OKD API Endpoints
+
+address=/api.{{ okd_domain }}/{{ okd_node_ip }}
+
+address=/api-int.{{ okd_domain }}/{{ okd_node_ip }}
+
+
+
+# OKD Applications Wildcard
+
+address=/.apps.{{ okd_domain }}/{{ okd_node_ip }}
+
+
+
+# Upstream DNS Servers
+
+server=8.8.8.8
+
+server=8.8.4.4
+
+
+
+# No DHCP on this interface (handled by libvirt)
+
+no-dhcp-interface=eth0
+

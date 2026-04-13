@@ -1,0 +1,101 @@
+
+# HAProxy Configuration for OKD {{ okd_cluster_name }}
+
+global
+
+    log /dev/log local0
+
+    maxconn 4096
+
+    daemon
+
+
+
+defaults
+
+    mode tcp
+
+    log global
+
+    option tcplog
+
+    option dontlognull
+
+    timeout connect 5000ms
+
+    timeout client 50000ms
+
+    timeout server 50000ms
+
+
+
+# Kubernetes API Server (6443)
+
+frontend api-frontend
+
+    bind *:6443
+
+    default_backend api-backend
+
+
+
+backend api-backend
+
+    balance roundrobin
+
+    server okd-node {{ okd_node_ip }}:6443 check
+
+
+
+# Machine Config Server (22623)
+
+frontend machine-config-frontend
+
+    bind *:22623
+
+    default_backend machine-config-backend
+
+
+
+backend machine-config-backend
+
+    balance roundrobin
+
+    server okd-node {{ okd_node_ip }}:22623 check
+
+
+
+# Ingress HTTP (80)
+
+frontend ingress-http
+
+    bind *:80
+
+    default_backend ingress-http-backend
+
+
+
+backend ingress-http-backend
+
+    balance roundrobin
+
+    server okd-node {{ okd_node_ip }}:80 check
+
+
+
+# Ingress HTTPS (443)
+
+frontend ingress-https
+
+    bind *:443
+
+    default_backend ingress-https-backend
+
+
+
+backend ingress-https-backend
+
+    balance roundrobin
+
+    server okd-node {{ okd_node_ip }}:443 check
+

@@ -1,0 +1,113 @@
+
+---
+
+- name: Check if OKD VM already exists
+
+  command: virsh list --all --name
+
+  register: existing_vms
+
+  changed_when: false
+
+  delegate_to: localhost
+
+
+
+- name: Set fact for VM existence
+
+  set_fact:
+
+    okd_node_exists: "{{ 'okd-node' in existing_vms.stdout_lines }}"
+
+
+
+- name: Destroy existing VM if it exists
+
+  command: virsh destroy okd-node
+
+  when: okd_node_exists
+
+  ignore_errors: yes
+
+  delegate_to: localhost
+
+
+
+- name: Undefine existing VM if it exists
+
+  command: virsh undefine okd-node
+
+  when: okd_node_exists
+
+  ignore_errors: yes
+
+  delegate_to: localhost
+
+
+
+- name: Remove existing disk image
+
+  file:
+
+    path: "{{ libvirt_pool_path }}/okd-node.qcow2"
+
+    state: absent
+
+  when: okd_node_exists
+
+  delegate_to: localhost
+
+
+
+- name: Create OKD Node disk image
+
+  command: "qemu-img create -f qcow2 {{ libvirt_pool_path }}/okd-node.qcow2 {{ okd_node_disk }}G"
+
+  args:
+
+    creates: "{{ libvirt_pool_path }}/okd-node.qcow2"
+
+  delegate_to: localhost
+
+
+
+- name: Create OKD Node VM with CD-ROM
+
+  command: "virt-install --name okd-node --ram {{ okd_node_ram }} --vcpus {{ okd_node_vcpus }} --disk path={{ libvirt_pool_path }}/okd-node.qcow2,format=qcow2,bus=virtio --disk path={{ iso_download_dir }}/{{ scos_iso_name }},device=cdrom --network network={{ libvirt_network }},mac={{ okd_node_mac }} --graphics vnc,listen=0.0.0.0 --os-variant fedora-coreos-stable --boot uefi --noautoconsole"
+
+  register: vm_creation
+
+  delegate_to: localhost
+
+
+
+- name: Display next steps
+
+  debug:
+
+    msg: |
+
+      ✅ OKD Node VM Created!
+
+      
+
+      Start the VM:
+
+        sudo virsh start okd-node
+
+      
+
+      Connect to console:
+
+        sudo virt-viewer okd-node
+
+      
+
+      At Boot Manager, select CD/DVD drive
+
+      
+
+      At boot menu, press Tab and add:
+
+        coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://{{ bastion_ip }}:8080/ignition/bootstrap.ign
+

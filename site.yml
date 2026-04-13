@@ -1,0 +1,85 @@
+
+---
+
+- name: OKD Infrastructure Setup
+
+  hosts: localhost
+
+  become: yes
+
+  gather_facts: yes
+
+  
+
+  vars_files:
+
+    - vars/main.yml
+
+  
+
+  tasks:
+
+    - name: Display setup banner
+
+      debug:
+
+        msg: |
+
+          ================================
+
+          OKD 4.21 Infrastructure Setup
+
+          ================================
+
+          Bastion IP: {{ bastion_ip }}
+
+          OKD Node IP: {{ okd_node_ip }}
+
+          Domain: {{ okd_domain }}
+
+          ================================
+
+
+
+- name: Download ISOs
+
+  hosts: localhost
+
+  become: yes
+
+  gather_facts: yes
+
+  roles:
+
+    - download-isos
+
+
+
+- name: Create Bastion VM
+
+  hosts: localhost
+
+  become: yes
+
+  gather_facts: yes
+
+  roles:
+
+    - create-bastion
+
+
+
+- name: Configure Bastion Services
+
+  hosts: bastion
+
+  become: yes
+
+  gather_facts: yes
+
+  roles:
+
+    - configure-bastion
+
+  tags: configure-bastion
+

@@ -1,0 +1,107 @@
+
+---
+
+- name: Create OKD tools directory
+
+  file:
+
+    path: "{{ ansible_env.HOME }}/okd-tools"
+
+    state: directory
+
+    mode: '0755'
+
+
+
+- name: Download openshift-install
+
+  get_url:
+
+    url: "{{ okd_installer_url }}"
+
+    dest: "{{ ansible_env.HOME }}/okd-tools/openshift-install.tar.gz"
+
+    mode: '0644'
+
+
+
+- name: Download oc client
+
+  get_url:
+
+    url: "{{ okd_client_url }}"
+
+    dest: "{{ ansible_env.HOME }}/okd-tools/oc-client.tar.gz"
+
+    mode: '0644'
+
+
+
+- name: Extract openshift-install
+
+  unarchive:
+
+    src: "{{ ansible_env.HOME }}/okd-tools/openshift-install.tar.gz"
+
+    dest: "{{ ansible_env.HOME }}/okd-tools/"
+
+    remote_src: yes
+
+    creates: "{{ ansible_env.HOME }}/okd-tools/openshift-install"
+
+
+
+- name: Extract oc client
+
+  unarchive:
+
+    src: "{{ ansible_env.HOME }}/okd-tools/oc-client.tar.gz"
+
+    dest: "{{ ansible_env.HOME }}/okd-tools/"
+
+    remote_src: yes
+
+    creates: "{{ ansible_env.HOME }}/okd-tools/oc"
+
+
+
+- name: Move openshift-install to /usr/local/bin
+
+  copy:
+
+    src: "{{ ansible_env.HOME }}/okd-tools/openshift-install"
+
+    dest: /usr/local/bin/openshift-install
+
+    mode: '0755'
+
+    remote_src: yes
+
+
+
+- name: Move oc to /usr/local/bin
+
+  copy:
+
+    src: "{{ ansible_env.HOME }}/okd-tools/oc"
+
+    dest: /usr/local/bin/oc
+
+    mode: '0755'
+
+    remote_src: yes
+
+
+
+- name: Move kubectl to /usr/local/bin
+
+  copy:
+
+    src: "{{ ansible_env.HOME }}/okd-tools/kubectl"
+
+    dest: /usr/local/bin/kubectl
+
+    mode: '0755'
+
+    remote_src: yes
+

@@ -1,0 +1,66 @@
+---
+
+- name: Check if Bastion VM already exists
+
+  command: virsh list --all --name
+
+  register: existing_vms
+
+  changed_when: false
+
+
+
+- name: Set fact for VM existence
+
+  set_fact:
+
+    bastion_exists: "{{ 'bastion' in existing_vms.stdout_lines }}"
+
+
+
+- name: Display VM status
+
+  debug:
+
+    msg: "Bastion VM will be created"
+
+
+
+- name: Create Bastion disk image
+
+  command: qemu-img create -f qcow2 /var/lib/libvirt/images/bastion.qcow2 40G
+
+  args:
+
+    creates: /var/lib/libvirt/images/bastion.qcow2
+
+  when: not bastion_exists
+
+
+
+- name: Create Bastion VM
+
+  command: virt-install --name bastion --ram 4096 --vcpus 2 --disk path=/var/lib/libvirt/images/bastion.qcow2,format=qcow2,bus=virtio --network network=okd-net,mac=52:54:00:00:00:10 --graphics vnc,listen=0.0.0.0 --os-variant rhel9.0 --cdrom /var/lib/libvirt/isos/Rocky-9-latest-x86_64-minimal.iso --noautoconsole --boot uefi
+
+  when: not bastion_exists
+
+  register: vm_creation
+
+
+
+- name: Wait for VM to be defined
+
+  command: virsh list --all --name
+
+  register: vm_list
+
+  until: "'bastion' in vm_list.stdout"
+
+  retries: 5
+
+  delay: 2
+
+  changed_when: false
+
+  when: not bastion_exists
+

@@ -1,0 +1,35 @@
+
+---
+
+- name: Check if SCOS ISO exists
+
+  stat:
+
+    path: "{{ iso_download_dir }}/{{ scos_iso_name }}"
+
+  register: scos_iso_stat
+
+
+
+- name: Download CentOS Stream CoreOS ISO
+
+  get_url:
+
+    url: "{{ scos_iso_url }}"
+
+    dest: "{{ iso_download_dir }}/{{ scos_iso_name }}"
+
+    mode: '0644'
+
+    timeout: 3600
+
+  when: not scos_iso_stat.stat.exists
+
+
+
+- name: Display ISO information
+
+  debug:
+
+    msg: "SCOS ISO: {{ scos_iso_name }}"
+

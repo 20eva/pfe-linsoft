@@ -1,0 +1,54 @@
+[
+  {
+    "file": ".\\test_files\\test_deployment.yml",
+    "result": {
+      "layer": "k8s",
+      "risk": "HIGH",
+      "rf_score": 1.0,
+      "iso_score": 0.963,
+      "final_score": 0.989,
+      "action": "block",
+      "reasons": [
+        "Container runs as root",
+        "Privileged container detected",
+        "Dangerous capabilities: 2",
+        "Host network access enabled",
+        "No resource limits set",
+        "Using :latest image tag"
+      ]
+    }
+  },
+  {
+    "file": ".\\test_files\\test_main.tf",
+    "result": {
+      "layer": "terraform",
+      "risk": "HIGH",
+      "rf_score": 0.83,
+      "iso_score": 0.985,
+      "final_score": 0.876,
+      "action": "block",
+      "reasons": [
+        "Hardcoded secrets: 1",
+        "Open port/firewall rules: 4",
+        "No lifecycle protection on resources"
+      ]
+    }
+  },
+  {
+    "file": ".\\test_files\\test_playbook.yml",
+    "result": {
+      "layer": "ansible",
+      "risk": "HIGH",
+      "rf_score": 0.99,
+      "iso_score": 0.986,
+      "final_score": 0.989,
+      "action": "block",
+      "reasons": [
+        "Hardcoded secrets detected: 1",
+        "Privilege escalation present: 1",
+        "Dangerous modules used: 2",
+        "no_log set to false \u2014 secrets may be logged"
+      ]
+    }
+  }
+]

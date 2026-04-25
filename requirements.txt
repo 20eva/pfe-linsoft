@@ -1,0 +1,16 @@
+scikit-learn==1.8.0
+pandas==3.0.2
+fastapi==0.136.1
+uvicorn==0.46.0
+PyYAML==6.0.3
+python-hcl2==8.1.2
+requests==2.33.1
+pydantic==2.13.3
+starlette==1.0.0
+anyio==4.13.0
+numpy==2.2.5
+scipy==1.15.3
+joblib==1.5.3
+threadpoolctl==3.6.0
+click==8.3.3
+h11==0.16.0

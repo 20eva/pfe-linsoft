@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-app
+spec:
+  replicas: 1
+  template:
+    spec:
+      hostNetwork: true
+      containers:
+        - name: app
+          image: myapp:latest
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            allowPrivilegeEscalation: true
+            capabilities:
+              add: ["SYS_ADMIN", "NET_ADMIN"]
+          env:
+            - name: DB_PASSWORD
+              value: "hardcoded-secret-123"
+          volumeMounts:
+            - mountPath: /host
+              name: host-vol
+      volumes:
+        - name: host-vol
+          hostPath:
+            path: /
+            

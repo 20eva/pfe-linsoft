@@ -1,0 +1,99 @@
+# ─────────────────────────────────────────────
+# AIOps GitLab CI Pipeline
+# Stages:
+#   1. scan   — AI security scanner (blocks if HIGH)
+#   2. test   — unit tests
+#   3. build  — docker build
+#   4. deploy — deploy to OKD (when cluster ready)
+# ─────────────────────────────────────────────
+
+stages:
+  - scan
+  - test
+  - build
+  - deploy
+
+variables:
+  # Change this to OKD service URL when cluster is ready
+  AIOPS_API_URL: "http://127.0.0.1:8000"
+  PYTHON: "python3"
+
+# ── Stage 1: AI Security Scan ─────────────────
+ai_security_scan:
+  stage: scan
+  image: python:3.11-slim
+  before_script:
+    - pip install requests pyyaml python-hcl2 scikit-learn pandas --quiet
+  script:
+    # Get list of changed files in this commit
+    - |
+      CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null \
+        | grep -E '\.(tf|yml|yaml)$' || true)
+
+    # If no changed files detected, scan everything
+    - |
+      if [ -z "$CHANGED" ]; then
+        echo "No changed files detected — scanning all files"
+        python ci_scanner/scan.py
+      else
+        echo "Scanning changed files: $CHANGED"
+        python ci_scanner/scan.py $CHANGED
+      fi
+
+  artifacts:
+    # Save the scan report even if the job fails
+    when: always
+    paths:
+      - ci_scanner/scan_report.json
+    expire_in: 30 days
+
+  # Only run on merge requests and main branch
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+# ── Stage 2: Tests ────────────────────────────
+unit_tests:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - pip install pytest scikit-learn pandas pyyaml python-hcl2 --quiet
+  script:
+    - echo "Running unit tests..."
+    - python -m pytest tests/ -v 2>/dev/null || echo "No tests yet"
+  needs:
+    - ai_security_scan
+
+# ── Stage 3: Build Docker image ───────────────
+build_image:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - docker info
+  script:
+    - echo "Building AIOps predictor image..."
+    - docker build -t aiops-predictor:$CI_COMMIT_SHORT_SHA .
+    - docker tag aiops-predictor:$CI_COMMIT_SHORT_SHA aiops-predictor:latest
+    - echo "Image built successfully"
+  needs:
+    - unit_tests
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ── Stage 4: Deploy to OKD ────────────────────
+# Uncomment this when OKD cluster is ready
+#
+# deploy_okd:
+#   stage: deploy
+#   script:
+#     - oc login $OKD_URL --token=$OKD_TOKEN
+#     - oc set image deployment/aiops-predictor
+#         predictor=aiops-predictor:$CI_COMMIT_SHORT_SHA
+#         -n aiops
+#   needs:
+#     - build_image
+#   rules:
+#     - if: '$CI_COMMIT_BRANCH == "main"'

@@ -67,3 +67,17 @@
 
     - 443
 
+
+- name: Allow HAProxy to bind to OKD ports (SELinux)
+  ansible.builtin.command: setsebool -P haproxy_connect_any 1
+  become: true
+
+- name: Allow port 6443 for HAProxy (SELinux)
+  ansible.builtin.command: semanage port -a -t http_port_t -p tcp 6443
+  become: true
+  ignore_errors: true
+
+- name: Allow port 22623 for HAProxy (SELinux)
+  ansible.builtin.command: semanage port -a -t http_port_t -p tcp 22623
+  become: true
+  ignore_errors: true

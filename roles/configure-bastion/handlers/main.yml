@@ -29,3 +29,7 @@
 
     state: restarted
 
+- name: restart named
+  systemd:
+    name: named
+    state: restarted

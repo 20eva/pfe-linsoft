@@ -1,0 +1,48 @@
+---
+- name: Verify SCOS base ISO exists
+  ansible.builtin.stat:
+    path: "{{ scos_iso_path }}"
+  register: scos_stat
+  failed_when: not scos_stat.stat.exists
+
+- name: Verify ignition file exists
+  ansible.builtin.stat:
+    path: "{{ ignition_file }}"
+  register: ign_stat
+  failed_when: not ign_stat.stat.exists
+
+- name: Show ignition file size
+  ansible.builtin.debug:
+    msg: "Ignition file: {{ ignition_file }} ({{ ign_stat.stat.size }} bytes)"
+
+- name: Remove old embedded ISO if exists
+  ansible.builtin.file:
+    path: "{{ sno_embedded_iso }}"
+    state: absent
+
+- name: Embed ignition into SCOS ISO
+  ansible.builtin.command:
+    cmd: >
+      coreos-installer iso ignition embed
+      -i {{ ignition_file }}
+      -o {{ sno_embedded_iso }}
+      {{ scos_iso_path }}
+  register: embed_result
+  failed_when: embed_result.rc != 0
+
+- name: Set ownership on embedded ISO
+  ansible.builtin.file:
+    path: "{{ sno_embedded_iso }}"
+    owner: qemu
+    group: qemu
+    mode: '0644'
+
+- name: Verify embedded ISO created
+  ansible.builtin.stat:
+    path: "{{ sno_embedded_iso }}"
+  register: embedded_stat
+  failed_when: not embedded_stat.stat.exists
+
+- name: Show embed result
+  ansible.builtin.debug:
+    msg: "Embedded ISO ready: {{ sno_embedded_iso }} ({{ (embedded_stat.stat.size / 1024 / 1024) | round(0) }} MB)"

@@ -1,0 +1,48 @@
+---
+# ============================================================
+# OKD SNO Deployment — AWX Main Playbook
+# All tools and ISOs already present on host
+# ============================================================
+
+# Play 1: Configure bastion DNS + HAProxy
+- name: Configure bastion services
+  hosts: bastion
+  become: true
+  gather_facts: true
+  vars_files:
+    - vars/main.yml
+  roles:
+    - configure-bastion
+
+# Play 2: Embed ignition into SCOS ISO
+- name: Prepare SNO embedded ISO
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  vars_files:
+    - vars/main.yml
+  roles:
+    - embed-iso
+
+# Play 3: Boot okd-node from embedded ISO
+- name: Boot okd-node
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/main.yml
+  roles:
+    - boot-okd-node
+
+# Play 4: Monitor installation
+- name: Monitor SNO installation
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+  vars_files:
+    - vars/main.yml
+  roles:
+    - monitor-sno

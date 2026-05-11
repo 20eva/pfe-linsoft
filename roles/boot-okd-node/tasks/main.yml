@@ -1,0 +1,43 @@
+---
+- name: Shut down okd-node if running
+  ansible.builtin.command:
+    cmd: virsh destroy okd-node
+  ignore_errors: true
+
+- name: Wait for VM to be shut off
+  ansible.builtin.command:
+    cmd: virsh domstate okd-node
+  register: vm_state
+  until: vm_state.stdout.strip() == 'shut off'
+  retries: 12
+  delay: 5
+
+- name: Eject any existing ISO
+  ansible.builtin.command:
+    cmd: virsh change-media okd-node sda --eject --config
+  ignore_errors: true
+
+- name: Attach embedded SNO ISO
+  ansible.builtin.command:
+    cmd: >
+      virsh change-media okd-node sda
+      {{ sno_embedded_iso }} --insert --config
+
+- name: Start okd-node VM
+  ansible.builtin.command:
+    cmd: virsh start okd-node
+
+- name: Confirm VM is running
+  ansible.builtin.command:
+    cmd: virsh domstate okd-node
+  register: running_state
+  failed_when: "'running' not in running_state.stdout"
+
+- name: Show boot status
+  ansible.builtin.debug:
+    msg: "okd-node is booting from embedded SNO ISO — SCOS installation starting"
+
+- name: Wait 90 seconds for initial boot
+  ansible.builtin.pause:
+    seconds: 90
+    prompt: "Waiting for okd-node to boot from ISO..."

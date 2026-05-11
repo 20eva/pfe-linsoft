@@ -1,91 +1,38 @@
-
 ---
-
 # Network Configuration
-
 bastion_ip: "192.168.100.10"
-
 okd_node_ip: "192.168.100.50"
-
 network_gateway: "192.168.100.1"
-
 network_cidr: "192.168.100.0/24"
-
 okd_domain: "okd.local"
-
 okd_cluster_name: "sno"
 
-
-
 # VM Specifications
-
-bastion_vcpus: 2
-
-bastion_ram: 4096
-
-bastion_disk: 40
-
-bastion_mac: "52:54:00:00:00:10"
-
-
-
 okd_node_vcpus: 8
-
 okd_node_ram: 16384
-
 okd_node_disk: 120
-
 okd_node_mac: "52:54:00:00:00:50"
 
-
-
 # Libvirt Settings
-
 libvirt_pool: "default"
-
 libvirt_pool_path: "/var/lib/libvirt/images"
-
 libvirt_network: "okd-net"
 
-
-
-# ISO Settings
-
+# ISO Settings — already downloaded, no need to re-download
 iso_download_dir: "/var/lib/libvirt/isos"
+scos_iso_name: "scos-10.0.20250628-0-live-iso.x86_64.iso"
+scos_iso_path: "/var/lib/libvirt/isos/scos-10.0.20250628-0-live-iso.x86_64.iso"
+sno_embedded_iso: "/var/lib/libvirt/isos/sno-embedded.iso"
 
-rocky_iso_url: "https://download.rockylinux.org/pub/rocky/9/isos/x86_64/Rocky-9-latest-x86_64-minimal.iso"
-
-rocky_iso_name: "Rocky-9-latest-x86_64-minimal.iso"
-
-
-
-# CentOS Stream 10 CoreOS (SCOS) for OKD 4.20
-
-scos_iso_name: "centos-stream-10-latest-x86_64-boot.iso"
-
-scos_iso_url: "https://mirror.centos.org/centos/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-boot.iso"
-
-
+# Ignition — already generated
+ignition_file: "/home/ocp/okd-install/sno/bootstrap-in-place-for-live-iso.ign"
+okd_install_dir: "/home/ocp/okd-install/sno"
+okd_tools_dir: "/home/ocp/okd-tools"
 
 # OKD 4.20 Settings
-
 okd_version: "4.20.0-okd-scos.9"
-
 okd_base_domain: "okd.local"
-
 okd_pull_secret: '{"auths":{"fake":{"auth":"aGVsbG86d29ybGQ="}}}'
 
-
-
-# OKD Download URLs
-
-okd_installer_url: "https://github.com/openshift/okd/releases/download/{{ okd_version }}/openshift-install-linux-{{ okd_version }}.tar.gz"
-
-okd_client_url: "https://github.com/openshift/okd/releases/download/{{ okd_version }}/openshift-client-linux-{{ okd_version }}.tar.gz"
-
-
-
 # Bastion User
-
 bastion_user: "admin"
-

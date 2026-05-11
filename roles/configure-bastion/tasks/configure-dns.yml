@@ -1,107 +1,116 @@
-
 ---
+- name: Install bind packages
+  ansible.builtin.dnf:
+    name:
+      - bind
+      - bind-utils
+    state: present
 
-- name: Backup original dnsmasq config
+- name: Deploy named.conf
+  ansible.builtin.copy:
+    dest: /etc/named.conf
+    owner: named
+    group: named
+    mode: '0640'
+    content: |
+      options {
+          listen-on port 53 { 127.0.0.1; {{ bastion_ip }}; };
+          listen-on-v6 port 53 { ::1; };
+          directory       "/var/named";
+          allow-query     { localhost; 192.168.100.0/24; };
+          recursion yes;
+          forwarders { 8.8.8.8; };
+          forward only;
+          dnssec-validation no;
+      };
+      zone "{{ okd_domain }}" IN {
+          type master;
+          file "/var/named/zones/db.{{ okd_domain }}";
+          allow-update { none; };
+      };
+      zone "100.168.192.in-addr.arpa" IN {
+          type master;
+          file "/var/named/zones/db.100.168.192";
+          allow-update { none; };
+      };
+      include "/etc/named.rfc1912.zones";
+      include "/etc/named.root.key";
+  notify: restart named
 
-  copy:
-
-    src: /etc/dnsmasq.conf
-
-    dest: /etc/dnsmasq.conf.backup
-
-    remote_src: yes
-
-    force: no
-
-
-
-- name: Create dnsmasq.d directory
-
-  file:
-
-    path: /etc/dnsmasq.d
-
+- name: Create zones directory
+  ansible.builtin.file:
+    path: /var/named/zones
     state: directory
+    owner: named
+    group: named
+    mode: '0750'
 
-    mode: '0755'
+- name: Deploy forward zone
+  ansible.builtin.copy:
+    dest: "/var/named/zones/db.{{ okd_domain }}"
+    owner: named
+    group: named
+    mode: '0640'
+    content: |
+      $TTL 0
+      @ IN SOA bastion.{{ okd_domain }}. admin.{{ okd_domain }}. (
+              2026051101 3600 900 604800 86400 )
+      @               IN  NS  bastion.{{ okd_domain }}.
+      bastion         IN  A   {{ bastion_ip }}
+      api             IN  A   {{ okd_node_ip }}
+      api-int         IN  A   {{ okd_node_ip }}
+      *.apps          IN  A   {{ okd_node_ip }}
+      sno-node        IN  A   {{ okd_node_ip }}
+  notify: restart named
 
+- name: Deploy reverse zone
+  ansible.builtin.copy:
+    dest: /var/named/zones/db.100.168.192
+    owner: named
+    group: named
+    mode: '0640'
+    content: |
+      $TTL 0
+      @ IN SOA bastion.{{ okd_domain }}. admin.{{ okd_domain }}. (
+              2026051101 3600 900 604800 86400 )
+      @   IN  NS  bastion.{{ okd_domain }}.
+      10  IN  PTR bastion.{{ okd_domain }}.
+      50  IN  PTR sno-node.{{ okd_domain }}.
+  notify: restart named
 
-
-- name: Deploy dnsmasq OKD configuration
-
-  template:
-
-    src: dnsmasq-okd.conf.j2
-
-    dest: /etc/dnsmasq.d/okd.conf
-
-    mode: '0644'
-
-  notify: restart dnsmasq
-
-
-
-- name: Enable and start dnsmasq
-
-  systemd:
-
-    name: dnsmasq
-
+- name: Enable and start named
+  ansible.builtin.systemd:
+    name: named
+    enabled: true
     state: started
 
-    enabled: yes
+- name: Open DNS port in firewall
+  ansible.posix.firewalld:
+    service: dns
+    permanent: true
+    state: enabled
+    immediate: true
+  ignore_errors: true
 
-
-
-- name: Flush handlers to restart dnsmasq
-
-  meta: flush_handlers
-
-
-
-- name: Wait for dnsmasq to be ready
-
-  wait_for:
-
-    port: 53
-
-    timeout: 10
-
-
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
 
 - name: Test DNS - API endpoint
-
-  command: dig @127.0.0.1 api.{{ okd_domain }} +short
-
-  register: dns_test_api
-
+  ansible.builtin.command:
+    cmd: "dig @127.0.0.1 api.{{ okd_domain }} +short"
+  register: dns_test
   changed_when: false
-
-  failed_when: okd_node_ip not in dns_test_api.stdout
-
-
+  failed_when: okd_node_ip not in dns_test.stdout
 
 - name: Test DNS - Apps wildcard
-
-  command: dig @127.0.0.1 test.apps.{{ okd_domain }} +short
-
+  ansible.builtin.command:
+    cmd: "dig @127.0.0.1 test.apps.{{ okd_domain }} +short"
   register: dns_test_apps
-
   changed_when: false
-
   failed_when: okd_node_ip not in dns_test_apps.stdout
 
-
-
-- name: Display DNS test results
-
-  debug:
-
-    msg: |
-
-      DNS Configuration Successful:
-
-      ✓ api.{{ okd_domain }} → {{ okd_node_ip }}
-
-      ✓ *.apps.{{ okd_domain }} → {{ okd_node_ip }}
-
+- name: Show DNS results
+  ansible.builtin.debug:
+    msg:
+      - "api.{{ okd_domain }} -> {{ dns_test.stdout }}"
+      - "*.apps.{{ okd_domain }} -> {{ dns_test_apps.stdout }}"

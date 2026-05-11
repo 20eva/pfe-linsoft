@@ -1,0 +1,69 @@
+---
+- name: Point host DNS to bastion
+  ansible.builtin.command:
+    cmd: >
+      nmcli connection modify "{{ item }}"
+      ipv4.dns "{{ bastion_ip }}"
+      ipv4.dns-priority 10
+  loop: "{{ ansible_interfaces | reject('equalto', 'lo') | reject('equalto', 'flannel.1') | reject('equalto', 'cni0') | list }}"
+  ignore_errors: true
+  become: true
+
+- name: Reload NetworkManager
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: restarted
+  become: true
+
+- name: Wait for OKD API to respond (up to 90 minutes)
+  ansible.builtin.uri:
+    url: "https://api.{{ okd_domain }}:6443/version"
+    validate_certs: false
+    status_code: 200
+  register: api_check
+  until: api_check.status == 200
+  retries: 180
+  delay: 30
+
+- name: API is up
+  ansible.builtin.debug:
+    msg: "OKD API is UP at https://api.{{ okd_domain }}:6443"
+
+- name: Wait for install to complete
+  ansible.builtin.command:
+    cmd: >
+      {{ okd_tools_dir }}/openshift-install
+      agent wait-for install-complete
+      --dir {{ okd_install_dir }}
+      --log-level info
+  environment:
+    KUBECONFIG: "{{ okd_install_dir }}/auth/kubeconfig"
+  register: install_result
+  timeout: 5400
+
+- name: Get nodes
+  ansible.builtin.command:
+    cmd: "{{ okd_tools_dir }}/oc get nodes"
+  environment:
+    KUBECONFIG: "{{ okd_install_dir }}/auth/kubeconfig"
+  register: nodes_out
+  ignore_errors: true
+
+- name: Read kubeadmin password
+  ansible.builtin.slurp:
+    src: "{{ okd_install_dir }}/auth/kubeadmin-password"
+  register: kubeadmin_pass
+
+- name: Installation complete
+  ansible.builtin.debug:
+    msg:
+      - "============================================"
+      - "OKD SNO Installation Complete!"
+      - "============================================"
+      - "Console : https://console-openshift-console.apps.{{ okd_domain }}"
+      - "API     : https://api.{{ okd_domain }}:6443"
+      - "User    : kubeadmin"
+      - "Password: {{ kubeadmin_pass.content | b64decode | trim }}"
+      - "Nodes   :"
+      - "{{ nodes_out.stdout }}"
+      - "============================================"

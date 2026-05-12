@@ -17,7 +17,7 @@
 
 - name: Wait for OKD API to respond (up to 90 minutes)
   ansible.builtin.uri:
-    url: "https://api.{{ okd_domain }}:6443/version"
+    url: "https://api.{{ okd_cluster_name }}.{{ okd_domain }}:6443/version"
     validate_certs: false
     status_code: 200
   register: api_check
@@ -27,7 +27,7 @@
 
 - name: API is up
   ansible.builtin.debug:
-    msg: "OKD API is UP at https://api.{{ okd_domain }}:6443"
+    msg: "OKD API is UP at https://api.{{ okd_cluster_name }}.{{ okd_domain }}:6443"
 
 - name: Wait for install to complete
   ansible.builtin.command:
@@ -61,7 +61,7 @@
       - "OKD SNO Installation Complete!"
       - "============================================"
       - "Console : https://console-openshift-console.apps.{{ okd_domain }}"
-      - "API     : https://api.{{ okd_domain }}:6443"
+      - "API     : https://api.{{ okd_cluster_name }}.{{ okd_domain }}:6443"
       - "User    : kubeadmin"
       - "Password: {{ kubeadmin_pass.content | b64decode | trim }}"
       - "Nodes   :"

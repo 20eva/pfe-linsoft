@@ -1,21 +1,69 @@
 
 ---
 
+- name: Install httpd
+
+  ansible.builtin.dnf:
+
+    name: httpd
+
+    state: present
+
+
+
+- name: Configure httpd to listen on port 8080
+
+  ansible.builtin.lineinfile:
+
+    path: /etc/httpd/conf/httpd.conf
+
+    regexp: '^Listen '
+
+    line: 'Listen 8080'
+
+  notify: restart httpd
+
+
+
+- name: Allow port 8080 in SELinux
+
+  ansible.builtin.command: semanage port -a -t http_port_t -p tcp 8080
+
+  ignore_errors: true
+
+
+
+- name: Open port 8080 in firewall
+
+  ansible.posix.firewalld:
+
+    port: 8080/tcp
+
+    permanent: true
+
+    state: enabled
+
+    immediate: true
+
+  ignore_errors: true
+
+
+
 - name: Enable and start httpd
 
-  systemd:
+  ansible.builtin.systemd:
 
     name: httpd
 
     state: started
 
-    enabled: yes
+    enabled: true
 
 
 
 - name: Create ignition directory
 
-  file:
+  ansible.builtin.file:
 
     path: /var/www/html/ignition
 
@@ -31,17 +79,15 @@
 
 - name: Set SELinux context
 
-  command: restorecon -Rv /var/www/html
+  ansible.builtin.command: restorecon -Rv /var/www/html
 
   changed_when: false
-
-  when: ansible_selinux.status == 'enabled'
 
 
 
 - name: Create test file
 
-  copy:
+  ansible.builtin.copy:
 
     content: "OKD Bastion HTTP Server - Ready\n"
 
@@ -53,11 +99,11 @@
 
 - name: Test HTTP server
 
-  uri:
+  ansible.builtin.uri:
 
-    url: "http://{{ bastion_ip }}/test.txt"
+    url: "http://{{ bastion_ip }}:8080/test.txt"
 
-    return_content: yes
+    return_content: true
 
   register: http_test
 
@@ -67,7 +113,7 @@
 
 - name: Display HTTP test result
 
-  debug:
+  ansible.builtin.debug:
 
     msg: "HTTP Server: {{ 'OK' if 'Ready' in http_test.content else 'FAILED' }}"
 

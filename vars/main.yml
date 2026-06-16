@@ -42,10 +42,3 @@ install_dir: /home/libvirt/okd-install
 pull_secret: '{"auths":{"fake":{"auth":"aGVsbG86d29ybGQ="}}}'
 
 
-# Bootstrap VM
-bootstrap_name: bootstrap
-bootstrap_ram: 10240
-bootstrap_vcpus: 4
-bootstrap_disk: 100G
-bootstrap_mac: "52:54:00:00:01:20"
-bootstrap_ip: 192.168.100.20

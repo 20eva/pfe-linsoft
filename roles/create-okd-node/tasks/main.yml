@@ -1,76 +1,52 @@
-
 ---
-
 - name: Check if OKD VM already exists
-
   command: virsh list --all --name
-
   register: existing_vms
-
   changed_when: false
-
   delegate_to: localhost
-
-
 
 - name: Set fact for VM existence
-
   set_fact:
-
     okd_node_exists: "{{ 'okd-node' in existing_vms.stdout_lines }}"
 
-
-
 - name: Destroy existing VM if it exists
-
   command: virsh destroy okd-node
-
   when: okd_node_exists
-
   ignore_errors: yes
-
   delegate_to: localhost
-
-
 
 - name: Undefine existing VM if it exists
-
-  command: virsh undefine okd-node
-
+  command: virsh undefine okd-node --remove-all-storage
   when: okd_node_exists
-
   ignore_errors: yes
-
   delegate_to: localhost
-
-
-
-- name: Remove existing disk image
-
-  file:
-
-    path: "{{ libvirt_pool_path }}/okd-node.qcow2"
-
-    state: absent
-
-  when: okd_node_exists
-
-  delegate_to: localhost
-
-
 
 - name: Create OKD Node disk image
-
-  command: "qemu-img create -f qcow2 {{ libvirt_pool_path }}/okd-node.qcow2 {{ okd_node_disk }}G"
-
+  command: "qemu-img create -f qcow2 {{ libvirt_images_path }}/okd-node.qcow2 {{ okd_node_disk }}"
   args:
-
-    creates: "{{ libvirt_pool_path }}/okd-node.qcow2"
-
+    creates: "{{ libvirt_images_path }}/okd-node.qcow2"
   delegate_to: localhost
 
+- name: Create OKD Node VM with ignition via fw_cfg
+  command: >
+    virt-install
+    --name okd-node
+    --ram {{ okd_node_ram }}
+    --vcpus {{ okd_node_vcpus }}
+    --disk path={{ libvirt_images_path }}/okd-node.qcow2,format=qcow2,bus=virtio
+    --network network={{ okd_network }},mac={{ okd_node_mac }}
+    --os-variant fedora-coreos-stable
+    --graphics vnc,listen=0.0.0.0
+    --noautoconsole
+    --noreboot
+    --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/master.ign"
+  delegate_to: localhost
 
-
-- name: Create OKD Node VM with CD-ROM
-
-  command: "virt-install --name okd-node --ram {{ okd_node_ram }} --vcpus {{ okd_node_vcpus }} --disk path={{ libvirt_pool_path }}/okd-node.qcow2,format=qcow2,bus=virtio --disk path={{ iso_download_dir }}/{{ scos_iso_name }},device=cdrom --network network={{ libvirt_network 
+- name: Wait for VM to be defined
+  command: virsh list --all --name
+  register: vm_list
+  until: "'okd-node' in vm_list.stdout"
+  retries: 5
+  delay: 2
+  changed_when: false
+  delegate_to: localhost

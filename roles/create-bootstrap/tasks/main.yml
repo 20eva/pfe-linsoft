@@ -1,0 +1,60 @@
+---
+- name: Check if Bootstrap VM already exists
+  command: virsh list --all --name
+  register: existing_vms
+  changed_when: false
+  delegate_to: localhost
+
+- name: Set fact for VM existence
+  set_fact:
+    bootstrap_exists: "{{ 'bootstrap' in existing_vms.stdout_lines }}"
+
+- name: Destroy existing Bootstrap VM if it exists
+  command: virsh destroy bootstrap
+  when: bootstrap_exists
+  ignore_errors: yes
+  delegate_to: localhost
+
+- name: Undefine existing Bootstrap VM if it exists
+  command: virsh undefine bootstrap --remove-all-storage
+  when: bootstrap_exists
+  ignore_errors: yes
+  delegate_to: localhost
+
+- name: Create Bootstrap disk image
+  command: "qemu-img create -f qcow2 {{ libvirt_images_path }}/bootstrap.qcow2 {{ bootstrap_disk }}"
+  args:
+    creates: "{{ libvirt_images_path }}/bootstrap.qcow2"
+  delegate_to: localhost
+
+- name: Create Bootstrap VM with ignition via fw_cfg
+  command: >
+    virt-install
+    --name bootstrap
+    --ram {{ bootstrap_ram }}
+    --vcpus {{ bootstrap_vcpus }}
+    --disk path={{ libvirt_images_path }}/bootstrap.qcow2,format=qcow2,bus=virtio
+    --network network={{ okd_network }},mac={{ bootstrap_mac }}
+    --os-variant fedora-coreos-stable
+    --graphics vnc,listen=0.0.0.0
+    --noautoconsole
+    --noreboot
+    --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/bootstrap.ign"
+  delegate_to: localhost
+
+- name: Wait for Bootstrap VM to be defined
+  command: virsh list --all --name
+  register: vm_list
+  until: "'bootstrap' in vm_list.stdout"
+  retries: 5
+  delay: 2
+  changed_when: false
+  delegate_to: localhost
+
+- name: Start Bootstrap VM
+  command: virsh start bootstrap
+  delegate_to: localhost
+
+- name: Display Bootstrap VM status
+  debug:
+    msg: "✅ Bootstrap VM started — temporary, will be destroyed after cluster bootstrap completes"

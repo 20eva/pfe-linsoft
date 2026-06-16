@@ -1,99 +1,70 @@
-
 ---
-
 - name: Create OKD install directory
-
   file:
-
-    path: "{{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}"
-
+    path: "{{ install_dir }}"
     state: directory
-
     mode: '0755'
-
-
 
 - name: Generate SSH key if not exists
-
   command: "ssh-keygen -t ed25519 -N '' -f {{ ansible_env.HOME }}/.ssh/id_ed25519"
-
   args:
-
     creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
 
-
-
 - name: Read SSH public key
-
   slurp:
-
     src: "{{ ansible_env.HOME }}/.ssh/id_ed25519.pub"
-
   register: ssh_pub_key
 
-
-
 - name: Create install-config.yaml
-
   template:
-
     src: install-config.yaml.j2
-
-    dest: "{{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}/install-config.yaml"
-
+    dest: "{{ install_dir }}/install-config.yaml"
     mode: '0644'
 
-
-
-- name: Generate Ignition config
-
-  command: "openshift-install create single-node-ignition-config --dir={{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}"
-
+- name: Generate ignition configs (UPI)
+  command: "{{ openshift_install_bin }} create ignition-configs --dir={{ install_dir }}"
+  args:
+    creates: "{{ install_dir }}/bootstrap.ign"
   register: ignition_result
-
   failed_when: ignition_result.rc != 0
 
-
-
-- name: Create ignition directory on Bastion
-
-  file:
-
-    path: /var/www/html/ignition
-
-    state: directory
-
-    mode: '0755'
-
-    owner: nobody
-
-    group: nobody
-
-  delegate_to: bastion
-
-
-
-- name: Copy Ignition file to Bastion
-
+- name: Copy bootstrap ignition to isos dir (for bootstrap VM fw_cfg)
   copy:
-
-    src: "{{ ansible_env.HOME }}/okd-install/{{ okd_cluster_name }}/bootstrap-in-place-for-live-iso.ign"
-
-    dest: /var/www/html/ignition/bootstrap.ign
-
+    src: "{{ install_dir }}/bootstrap.ign"
+    dest: "{{ libvirt_isos_path }}/bootstrap.ign"
+    remote_src: true
     mode: '0644'
 
+- name: Copy master ignition to isos dir (for okd-node VM fw_cfg)
+  copy:
+    src: "{{ install_dir }}/master.ign"
+    dest: "{{ libvirt_isos_path }}/master.ign"
+    remote_src: true
+    mode: '0644'
+
+- name: Create ignition directory on Bastion httpd
+  file:
+    path: /var/www/html/ignition
+    state: directory
+    mode: '0755'
     owner: nobody
-
     group: nobody
+  delegate_to: bastion-vm
 
-  delegate_to: bastion
+- name: Copy ignition files to Bastion httpd
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: '0644'
+    owner: nobody
+    group: nobody
+  delegate_to: bastion-vm
+  loop:
+    - { src: "{{ install_dir }}/bootstrap.ign", dest: "/var/www/html/ignition/bootstrap.ign" }
+    - { src: "{{ install_dir }}/master.ign", dest: "/var/www/html/ignition/master.ign" }
 
-
-
-- name: Display Ignition URL
-
+- name: Display ignition URLs
   debug:
-
-    msg: "✅ Ignition file available at: http://{{ bastion_ip }}/ignition/bootstrap.ign"
-
+    msg:
+      - "✅ Bootstrap ignition: http://{{ bastion_ip }}/ignition/bootstrap.ign"
+      - "✅ Master ignition: http://{{ bastion_ip }}/ignition/master.ign"

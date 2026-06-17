@@ -13,10 +13,14 @@
     msg: "Bastion VM {{ 'already exists' if bastion_exists else 'will be created' }}"
 
 - name: Copy base cloud image to bastion disk path
-  copy:
-    src: "{{ bastion_base_image }}"
-    dest: "{{ libvirt_images_path }}/bastion.qcow2"
-    remote_src: true
+  command: cp {{ bastion_base_image }} {{ libvirt_images_path }}/bastion.qcow2
+  args:
+    creates: "{{ libvirt_images_path }}/bastion.qcow2"
+  when: not bastion_exists
+
+- name: Set ownership on bastion disk
+  file:
+    path: "{{ libvirt_images_path }}/bastion.qcow2"
     owner: qemu
     group: qemu
     mode: '0644'

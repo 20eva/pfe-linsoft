@@ -31,7 +31,7 @@
     --vcpus {{ bootstrap_vcpus }}
     --disk path={{ libvirt_images_path }}/bootstrap.qcow2,format=qcow2,bus=virtio
     --network network={{ okd_network }},mac={{ bootstrap_mac }}
-    --os-variant fedora-coreos-stable
+    --os-variant centos-stream10
     --graphics vnc,listen=0.0.0.0
     --noautoconsole
     --noreboot

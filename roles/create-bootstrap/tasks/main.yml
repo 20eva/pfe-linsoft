@@ -23,7 +23,7 @@
   args:
     creates: "{{ libvirt_images_path }}/bootstrap.qcow2"
 
-- name: Create Bootstrap VM with ignition via fw_cfg
+- name: Create Bootstrap VM
   command: >
     virt-install
     --name bootstrap
@@ -35,6 +35,7 @@
     --graphics vnc,listen=0.0.0.0
     --noautoconsole
     --noreboot
+    --cdrom {{ libvirt_isos_path }}/scos.x86_64.iso
     --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/bootstrap.ign"
 
 - name: Wait for Bootstrap VM to be defined
@@ -50,4 +51,4 @@
 
 - name: Display Bootstrap VM status
   debug:
-    msg: "✅ Bootstrap VM started — temporary, will be destroyed after cluster bootstrap completes"
+    msg: "Bootstrap VM started — temporary, will be destroyed after cluster bootstrap completes"

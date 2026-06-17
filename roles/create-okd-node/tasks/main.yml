@@ -23,7 +23,7 @@
   args:
     creates: "{{ libvirt_images_path }}/okd-node.qcow2"
 
-- name: Create OKD Node VM with ignition via fw_cfg
+- name: Create OKD Node VM
   command: >
     virt-install
     --name okd-node
@@ -35,12 +35,20 @@
     --graphics vnc,listen=0.0.0.0
     --noautoconsole
     --noreboot
+    --cdrom {{ libvirt_isos_path }}/scos.x86_64.iso
     --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/master.ign"
 
-- name: Wait for VM to be defined
+- name: Wait for OKD Node VM to be defined
   command: virsh list --all --name
   register: vm_list
   until: "'okd-node' in vm_list.stdout"
   retries: 5
   delay: 2
   changed_when: false
+
+- name: Start OKD Node VM
+  command: virsh start okd-node
+
+- name: Display OKD Node VM status
+  debug:
+    msg: "OKD Node VM started — SNO cluster installation in progress"

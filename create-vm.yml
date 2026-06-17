@@ -34,8 +34,8 @@
   roles:
     - configure-bastion
 
-- name: Download OKD Tools on Bastion
-  hosts: bastion
+- name: Download OKD Tools on Host
+  hosts: host
   become: true
   gather_facts: yes
   vars_files:

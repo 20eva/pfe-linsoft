@@ -15,10 +15,9 @@
           Bootstrap: {{ bootstrap_ip }} ({{ bootstrap_mac }})
           OKD Node:  {{ okd_node_ip }} ({{ okd_node_mac }})
           ================================
-
 - name: Create OKD Virtual Machines
   hosts: host
-  become: yes
+  become: false        # ← CHANGE THIS LINE
   gather_facts: yes
   vars_files:
     - vars/main.yml

@@ -3,7 +3,6 @@
   command: virsh list --all --name
   register: existing_vms
   changed_when: false
-  delegate_to: localhost
 
 - name: Set fact for VM existence
   set_fact:

@@ -3,7 +3,6 @@
   command: virsh list --all --name
   register: existing_vms
   changed_when: false
-  delegate_to: localhost
 
 - name: Set fact for VM existence
   set_fact:
@@ -13,19 +12,16 @@
   command: virsh destroy okd-node
   when: okd_node_exists
   ignore_errors: yes
-  delegate_to: localhost
 
 - name: Undefine existing VM if it exists
   command: virsh undefine okd-node --remove-all-storage
   when: okd_node_exists
   ignore_errors: yes
-  delegate_to: localhost
 
 - name: Create OKD Node disk image
   command: "qemu-img create -f qcow2 {{ libvirt_images_path }}/okd-node.qcow2 {{ okd_node_disk }}"
   args:
     creates: "{{ libvirt_images_path }}/okd-node.qcow2"
-  delegate_to: localhost
 
 - name: Create OKD Node VM with ignition via fw_cfg
   command: >
@@ -40,7 +36,6 @@
     --noautoconsole
     --noreboot
     --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/master.ign"
-  delegate_to: localhost
 
 - name: Wait for VM to be defined
   command: virsh list --all --name
@@ -49,4 +44,3 @@
   retries: 5
   delay: 2
   changed_when: false
-  delegate_to: localhost

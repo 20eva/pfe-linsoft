@@ -47,6 +47,7 @@
   changed_when: false
 
 - name: Start Bootstrap VM
+  ignore_errors: yes
   command: virsh start bootstrap
 
 - name: Display Bootstrap VM status

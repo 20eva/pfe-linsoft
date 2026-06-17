@@ -47,6 +47,7 @@
   changed_when: false
 
 - name: Start OKD Node VM
+  ignore_errors: yes
   command: virsh start okd-node
 
 - name: Display OKD Node VM status

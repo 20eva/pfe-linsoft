@@ -4,12 +4,10 @@ host_ip: 192.168.1.4
 libvirt_images_path: /home/libvirt/vm-images
 libvirt_isos_path: /home/libvirt/isos
 okd_network: okd-net
-
 # Cluster
 okd_domain: okd.local
 okd_cluster_name: sno
 base_domain: okd.local
-
 # Bastion VM
 bastion_name: bastion
 bastion_ram: 4096
@@ -17,8 +15,7 @@ bastion_vcpus: 2
 bastion_disk: 20G
 bastion_mac: "52:54:00:00:01:10"
 bastion_ip: 192.168.100.10
-bastion_base_image: /home/libvirt/isos/CentOS-Stream-9-GenericCloud-latest.qcow2
-
+bastion_base_image: /home/libvirt/isos/CentOS-Stream-GenericCloud-9-20250812.1.x86_64.qcow2
 # Bootstrap VM
 bootstrap_name: bootstrap
 bootstrap_ram: 10240
@@ -26,7 +23,6 @@ bootstrap_vcpus: 4
 bootstrap_disk: 100G
 bootstrap_mac: "52:54:00:00:01:20"
 bootstrap_ip: 192.168.100.20
-
 # OKD Node VM (SNO)
 okd_node_name: okd-node
 okd_node_ram: 16384
@@ -34,11 +30,8 @@ okd_node_vcpus: 6
 okd_node_disk: 120G
 okd_node_mac: "52:54:00:00:01:50"
 okd_node_ip: 192.168.100.50
-
 # OKD Tools
 okd_version: "4.16.0"
 openshift_install_bin: /usr/local/bin/openshift-install
 install_dir: /home/libvirt/okd-install
 pull_secret: '{"auths":{"fake":{"auth":"aGVsbG86d29ybGQ="}}}'
-
-

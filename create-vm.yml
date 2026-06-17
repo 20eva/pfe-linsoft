@@ -15,13 +15,24 @@
           Bootstrap: {{ bootstrap_ip }} ({{ bootstrap_mac }})
           OKD Node:  {{ okd_node_ip }} ({{ okd_node_mac }})
           ================================
+
 - name: Create OKD Virtual Machines
   hosts: host
-  become: false        # ← CHANGE THIS LINE
+  become: false
   gather_facts: yes
   vars_files:
     - vars/main.yml
   roles:
     - create-bastion
-   # - create-bootstrap
+    # - create-bootstrap
     # - create-okd-node
+
+- name: Configure Bastion VM
+  hosts: bastion
+  become: true
+  gather_facts: yes
+  vars_files:
+    - vars/main.yml
+  roles:
+    - configure-bastion
+    

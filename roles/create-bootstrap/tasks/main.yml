@@ -6,7 +6,7 @@
 
 - name: Set fact for VM existence
   set_fact:
-    bootstrap_exists: "{{ 'bootstrap' in existing_ms.stdout_lines }}"
+    bootstrap_exists: "{{ 'bootstrap' in existing_vms.stdout_lines }}"
 
 - name: Destroy existing Bootstrap VM if it exists
   command: virsh destroy bootstrap

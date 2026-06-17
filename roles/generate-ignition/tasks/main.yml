@@ -28,19 +28,31 @@
   register: ignition_result
   failed_when: ignition_result.rc != 0
 
-- name: Copy bootstrap ignition to isos dir (for bootstrap VM fw_cfg)
+- name: Copy bootstrap ignition to isos dir
   copy:
     src: "{{ install_dir }}/bootstrap.ign"
     dest: "{{ libvirt_isos_path }}/bootstrap.ign"
     remote_src: true
     mode: '0644'
 
-- name: Copy master ignition to isos dir (for okd-node VM fw_cfg)
+- name: Copy master ignition to isos dir
   copy:
     src: "{{ install_dir }}/master.ign"
     dest: "{{ libvirt_isos_path }}/master.ign"
     remote_src: true
     mode: '0644'
+
+- name: Fetch bootstrap ignition from host
+  fetch:
+    src: "{{ install_dir }}/bootstrap.ign"
+    dest: /tmp/ignition/
+    flat: yes
+
+- name: Fetch master ignition from host
+  fetch:
+    src: "{{ install_dir }}/master.ign"
+    dest: /tmp/ignition/
+    flat: yes
 
 - name: Create ignition directory on Bastion httpd
   file:
@@ -51,20 +63,26 @@
     group: nobody
   delegate_to: bastion-vm
 
-- name: Copy ignition files to Bastion httpd
+- name: Copy bootstrap ignition to Bastion httpd
   copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
+    src: /tmp/ignition/bootstrap.ign
+    dest: /var/www/html/ignition/bootstrap.ign
     mode: '0644'
     owner: nobody
     group: nobody
   delegate_to: bastion-vm
-  loop:
-    - { src: "{{ install_dir }}/bootstrap.ign", dest: "/var/www/html/ignition/bootstrap.ign" }
-    - { src: "{{ install_dir }}/master.ign", dest: "/var/www/html/ignition/master.ign" }
+
+- name: Copy master ignition to Bastion httpd
+  copy:
+    src: /tmp/ignition/master.ign
+    dest: /var/www/html/ignition/master.ign
+    mode: '0644'
+    owner: nobody
+    group: nobody
+  delegate_to: bastion-vm
 
 - name: Display ignition URLs
   debug:
     msg:
-      - "✅ Bootstrap ignition: http://{{ bastion_ip }}/ignition/bootstrap.ign"
-      - "✅ Master ignition: http://{{ bastion_ip }}/ignition/master.ign"
+      - "Bootstrap ignition: http://{{ bastion_ip }}:8080/ignition/bootstrap.ign"
+      - "Master ignition: http://{{ bastion_ip }}:8080/ignition/master.ign"

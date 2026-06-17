@@ -24,8 +24,6 @@
     - vars/main.yml
   roles:
     - create-bastion
-    # - create-bootstrap
-    # - create-okd-node
 
 - name: Configure Bastion VM
   hosts: bastion
@@ -35,4 +33,31 @@
     - vars/main.yml
   roles:
     - configure-bastion
-    
+
+- name: Download OKD Tools on Bastion
+  hosts: bastion
+  become: true
+  gather_facts: yes
+  vars_files:
+    - vars/main.yml
+  roles:
+    - download-okd-tools
+
+- name: Generate Ignition Files
+  hosts: host
+  become: false
+  gather_facts: yes
+  vars_files:
+    - vars/main.yml
+  roles:
+    - generate-ignition
+
+- name: Create Bootstrap and OKD Node VMs
+  hosts: host
+  become: false
+  gather_facts: yes
+  vars_files:
+    - vars/main.yml
+  roles:
+    - create-bootstrap
+    - create-okd-node

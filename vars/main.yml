@@ -35,3 +35,6 @@ okd_version: "4.16.0"
 openshift_install_bin: /usr/local/bin/openshift-install
 install_dir: /home/libvirt/okd-install
 pull_secret: '{"auths":{"fake":{"auth":"aGVsbG86d29ybGQ="}}}'
+# OKD Download URLs
+okd_installer_url: "https://github.com/okd-project/okd/releases/download/4.16.0-0.okd-2024-09-14-205626/openshift-install-linux-4.16.0-0.okd-2024-09-14-205626.tar.gz"
+okd_client_url: "https://github.com/okd-project/okd/releases/download/4.16.0-0.okd-2024-09-14-205626/openshift-client-linux-4.16.0-0.okd-2024-09-14-205626.tar.gz"

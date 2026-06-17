@@ -1,6 +1,7 @@
 ---
 - name: Configure DNS (BIND/named)
   ansible.builtin.include_tasks: configure-dns.yml
-
 - name: Configure HAProxy
   ansible.builtin.include_tasks: configure-haproxy.yml
+- name: Configure HTTPD
+  ansible.builtin.include_tasks: configure-httpd.yml

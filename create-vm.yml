@@ -23,5 +23,5 @@
     - vars/main.yml
   roles:
     - create-bastion
-    - create-bootstrap
-    - create-okd-node
+   # - create-bootstrap
+    # - create-okd-node

@@ -86,3 +86,15 @@
     msg:
       - "Bootstrap ignition: http://{{ bastion_ip }}:8080/ignition/bootstrap.ign"
       - "Master ignition: http://{{ bastion_ip }}:8080/ignition/master.ign"
+
+- name: Fix SELinux context on ignition files
+  command: chcon -t svirt_image_t {{ item }}
+  loop:
+    - "{{ libvirt_isos_path }}/bootstrap.ign"
+    - "{{ libvirt_isos_path }}/master.ign"
+
+- name: Fix SELinux context on ignition files
+  command: chcon -t svirt_image_t {{ item }}
+  loop:
+    - "{{ libvirt_isos_path }}/bootstrap.ign"
+    - "{{ libvirt_isos_path }}/master.ign"

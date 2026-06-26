@@ -52,6 +52,29 @@
   roles:
     - generate-ignition
 
+- name: Configure DNS for OKD cluster
+  hosts: host
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Write libvirt DNS entries for OKD
+      copy:
+        dest: /var/lib/libvirt/dnsmasq/okd-net.addnhosts
+        content: |
+          {{ bootstrap_ip }} api-int.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ okd_node_ip }} api.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ okd_node_ip }} console-openshift-console.apps.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ okd_node_ip }} oauth-openshift.apps.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ bastion_ip }} bastion.{{ okd_domain }}
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Restart okd-net to apply DNS
+      shell: virsh net-destroy okd-net && virsh net-start okd-net
+
 - name: Create Bootstrap and OKD Node VMs
   hosts: host
   become: false

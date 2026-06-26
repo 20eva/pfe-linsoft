@@ -18,11 +18,12 @@ bastion_ip: 192.168.100.10
 bastion_base_image: /home/libvirt/isos/CentOS-Stream-GenericCloud-9-20250812.1.x86_64.qcow2
 # Bootstrap VM
 bootstrap_name: bootstrap
-bootstrap_ram: 10240
+bootstrap_ram: 16384
 bootstrap_vcpus: 4
-bootstrap_disk: 100G
+bootstrap_disk: 20G
 bootstrap_mac: "52:54:00:00:01:20"
 bootstrap_ip: 192.168.100.20
+bootstrap_embedded_iso: /home/libvirt/isos/bootstrap-embedded.iso
 # OKD Node VM (SNO)
 okd_node_name: okd-node
 okd_node_ram: 16384
@@ -38,3 +39,7 @@ pull_secret: '{"auths":{"fake":{"auth":"aGVsbG86d29ybGQ="}}}'
 # OKD Download URLs
 okd_installer_url: "https://github.com/okd-project/okd/releases/download/4.20.0-okd-scos.9/openshift-install-linux-4.20.0-okd-scos.9.tar.gz"
 okd_client_url: "https://github.com/okd-project/okd/releases/download/4.20.0-okd-scos.9/openshift-client-linux-4.20.0-okd-scos.9.tar.gz"
+# ISO paths
+scos_iso_path: /home/libvirt/isos/scos.x86_64.iso
+ignition_file: /home/libvirt/okd-install/master.ign
+sno_embedded_iso: /home/libvirt/isos/scos-embedded.iso

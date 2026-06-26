@@ -18,12 +18,31 @@
   when: bootstrap_exists
   ignore_errors: yes
 
+- name: Remove old bootstrap embedded ISO if exists
+  file:
+    path: "{{ bootstrap_embedded_iso }}"
+    state: absent
+
+- name: Embed bootstrap ignition into SCOS ISO
+  command: >
+    coreos-installer iso ignition embed
+    -i {{ install_dir }}/bootstrap.ign
+    -o {{ bootstrap_embedded_iso }}
+    {{ scos_iso_path }}
+
+- name: Set ownership on bootstrap embedded ISO
+  file:
+    path: "{{ bootstrap_embedded_iso }}"
+    owner: qemu
+    group: qemu
+    mode: '0644'
+
 - name: Create Bootstrap disk image
   command: "qemu-img create -f qcow2 {{ libvirt_images_path }}/bootstrap.qcow2 {{ bootstrap_disk }}"
   args:
     creates: "{{ libvirt_images_path }}/bootstrap.qcow2"
 
-- name: Create Bootstrap VM
+- name: Create Bootstrap VM with embedded ISO
   command: >
     virt-install
     --name bootstrap
@@ -35,8 +54,8 @@
     --graphics vnc,listen=0.0.0.0
     --noautoconsole
     --noreboot
-    --cdrom {{ libvirt_isos_path }}/scos.x86_64.iso
-    --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/bootstrap.ign"
+    --disk {{ bootstrap_embedded_iso }},device=cdrom,bus=sata,readonly=on
+    --boot cdrom,hd
 
 - name: Wait for Bootstrap VM to be defined
   command: virsh list --all --name
@@ -47,9 +66,8 @@
   changed_when: false
 
 - name: Start Bootstrap VM
-  ignore_errors: yes
   command: virsh start bootstrap
 
 - name: Display Bootstrap VM status
   debug:
-    msg: "Bootstrap VM started — temporary, will be destroyed after cluster bootstrap completes"
+    msg: "Bootstrap VM started with embedded ignition — bootkube will start automatically"

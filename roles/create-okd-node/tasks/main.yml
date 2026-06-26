@@ -23,7 +23,7 @@
   args:
     creates: "{{ libvirt_images_path }}/okd-node.qcow2"
 
-- name: Create OKD Node VM
+- name: Create OKD Node VM without booting
   command: >
     virt-install
     --name okd-node
@@ -35,8 +35,8 @@
     --graphics vnc,listen=0.0.0.0
     --noautoconsole
     --noreboot
-    --cdrom {{ libvirt_isos_path }}/scos.x86_64.iso
-    --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ libvirt_isos_path }}/master.ign"
+    --disk {{ scos_iso_path }},device=cdrom,bus=sata,readonly=on
+    --boot cdrom,hd
 
 - name: Wait for OKD Node VM to be defined
   command: virsh list --all --name
@@ -46,10 +46,6 @@
   delay: 2
   changed_when: false
 
-- name: Start OKD Node VM
-  ignore_errors: yes
-  command: virsh start okd-node
-
 - name: Display OKD Node VM status
   debug:
-    msg: "OKD Node VM started — SNO cluster installation in progress"
+    msg: "OKD Node VM defined — will be booted with embedded ISO by deploy-sno playbook"

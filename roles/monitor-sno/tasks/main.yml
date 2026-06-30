@@ -30,3 +30,32 @@
       --log-level info
   environment:
     KUBECONFIG: "{{ okd_install_dir }}/auth/kubeconfig"
+  register: install_result
+  timeout: 5400
+
+- name: Get nodes
+  ansible.builtin.command:
+    cmd: "{{ okd_tools_dir }}/oc get nodes"
+  environment:
+    KUBECONFIG: "{{ okd_install_dir }}/auth/kubeconfig"
+  register: nodes_out
+  ignore_errors: true
+
+- name: Read kubeadmin password
+  ansible.builtin.slurp:
+    src: "{{ okd_install_dir }}/auth/kubeadmin-password"
+  register: kubeadmin_pass
+
+- name: Installation complete
+  ansible.builtin.debug:
+    msg:
+      - "============================================"
+      - "OKD SNO Installation Complete!"
+      - "============================================"
+      - "Console : https://console-openshift-console.apps.{{ okd_domain }}"
+      - "API     : https://api.{{ okd_cluster_name }}.{{ okd_domain }}:6443"
+      - "User    : kubeadmin"
+      - "Password: {{ kubeadmin_pass.content | b64decode | trim }}"
+      - "Nodes   :"
+      - "{{ nodes_out.stdout }}"
+      - "============================================"

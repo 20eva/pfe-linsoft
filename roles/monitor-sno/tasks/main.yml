@@ -1,18 +1,10 @@
 ---
-- name: Point host DNS to bastion
-  ansible.builtin.command:
-    cmd: >
-      nmcli connection modify "{{ item }}"
-      ipv4.dns "{{ bastion_ip }}"
-      ipv4.dns-priority 10
-  loop: "{{ ansible_interfaces | reject('equalto', 'lo') | reject('equalto', 'flannel.1') | reject('equalto', 'cni0') | list }}"
-  ignore_errors: true
-  become: true
-
-- name: Reload NetworkManager
-  ansible.builtin.systemd:
-    name: NetworkManager
-    state: restarted
+- name: Add bastion as a DNS resolver in /etc/resolv.conf (non-disruptive)
+  ansible.builtin.lineinfile:
+    path: /etc/resolv.conf
+    line: "nameserver {{ bastion_ip }}"
+    insertbefore: BOF
+    state: present
   become: true
 
 - name: Wait for OKD API to respond (up to 90 minutes)
@@ -38,32 +30,3 @@
       --log-level info
   environment:
     KUBECONFIG: "{{ okd_install_dir }}/auth/kubeconfig"
-  register: install_result
-  timeout: 5400
-
-- name: Get nodes
-  ansible.builtin.command:
-    cmd: "{{ okd_tools_dir }}/oc get nodes"
-  environment:
-    KUBECONFIG: "{{ okd_install_dir }}/auth/kubeconfig"
-  register: nodes_out
-  ignore_errors: true
-
-- name: Read kubeadmin password
-  ansible.builtin.slurp:
-    src: "{{ okd_install_dir }}/auth/kubeadmin-password"
-  register: kubeadmin_pass
-
-- name: Installation complete
-  ansible.builtin.debug:
-    msg:
-      - "============================================"
-      - "OKD SNO Installation Complete!"
-      - "============================================"
-      - "Console : https://console-openshift-console.apps.{{ okd_domain }}"
-      - "API     : https://api.{{ okd_cluster_name }}.{{ okd_domain }}:6443"
-      - "User    : kubeadmin"
-      - "Password: {{ kubeadmin_pass.content | b64decode | trim }}"
-      - "Nodes   :"
-      - "{{ nodes_out.stdout }}"
-      - "============================================"

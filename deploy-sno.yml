@@ -1,4 +1,66 @@
 ---
+- name: Ensure OKD network DNS is healthy before deploying
+  hosts: host
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Write libvirt DNS entries for OKD (bootstrap-phase api-int)
+      copy:
+        dest: /var/lib/libvirt/dnsmasq/okd-net.addnhosts
+        content: |
+          {{ bootstrap_ip }} api-int.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ okd_node_ip }} api.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ okd_node_ip }} console-openshift-console.apps.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ okd_node_ip }} oauth-openshift.apps.{{ okd_cluster_name }}.{{ okd_domain }}
+          {{ bastion_ip }} bastion.{{ okd_domain }}
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Check if okd-net is currently active
+      command: virsh net-info okd-net
+      register: net_info
+      changed_when: false
+      failed_when: false
+
+    - name: Start okd-net if it is inactive (no VMs depend on it yet)
+      command: virsh net-start okd-net
+      when: "'Active:         no' in net_info.stdout"
+      ignore_errors: true
+
+    - name: Reload running okd-net dnsmasq to apply DNS changes (non-disruptive)
+      shell: |
+        PID=$(cat /var/run/libvirt/network/okd-net.pid 2>/dev/null)
+        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+          kill -HUP "$PID"
+          echo "reloaded"
+        else
+          echo "no-active-dnsmasq"
+        fi
+      register: dns_reload
+      when: "'Active:         yes' in net_info.stdout"
+      changed_when: "'reloaded' in dns_reload.stdout"
+
+    - name: Verify DNS resolves correctly
+      command: "dig api-int.{{ okd_cluster_name }}.{{ okd_domain }} @192.168.100.1 +short"
+      register: dns_check
+      changed_when: false
+      retries: 5
+      delay: 5
+      until: bootstrap_ip in dns_check.stdout
+      ignore_errors: true
+
+    - name: Show DNS verification result
+      debug:
+        msg: "api-int resolves to: {{ dns_check.stdout | default('FAILED - investigate manually before proceeding') }}"
+
+    - name: Fail early if DNS is broken (prevents wasted 90-minute install attempt)
+      fail:
+        msg: "DNS verification failed — api-int.{{ okd_cluster_name }}.{{ okd_domain }} does not resolve to bootstrap IP {{ bootstrap_ip }}. Fix libvirt/okd-net before continuing."
+      when: bootstrap_ip not in dns_check.stdout
+
 - name: Configure bastion services
   hosts: bastion
   become: true

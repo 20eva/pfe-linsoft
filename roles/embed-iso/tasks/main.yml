@@ -50,7 +50,7 @@
     validate_certs: false
     return_content: true
   register: full_ignition
-  delegate_to: localhost
+
 
 - name: Strip passwd/user-create section to avoid useradd race condition
   ansible.builtin.set_fact:
@@ -63,6 +63,7 @@
     dest: /var/www/html/master.ign
     mode: '0644'
   delegate_to: bastion-vm
+  become: true
 
 - name: Set ownership on embedded ISO
   ansible.builtin.file:

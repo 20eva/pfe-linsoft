@@ -70,3 +70,9 @@
     seconds: 90
     prompt: "Waiting for okd-node to boot from ISO..."
   when: needs_install | bool
+
+- name: Switch boot order to hd first after install (prevents reinstall loop)
+  ansible.builtin.command:
+    cmd: virt-xml okd-node --edit --boot hd,cdrom
+  when: needs_install | bool
+  ignore_errors: true

@@ -1,33 +1,61 @@
 ---
-- name: Shut down okd-node if running
+- name: Check if okd-node disk is already installed
+  ansible.builtin.shell: |
+    virsh domblklist okd-node --details 2>/dev/null | grep -c "disk.*vda" || echo 0
+  register: disk_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Check if okd-node already has partitions (installed)
+  ansible.builtin.shell: |
+    qemu-img info /home/libvirt/vm-images/okd-node.qcow2 2>/dev/null | grep "virtual size" | head -1
+    du -m /home/libvirt/vm-images/okd-node.qcow2 2>/dev/null | awk '{print $1}'
+  register: disk_size_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Determine if okd-node needs fresh install
+  ansible.builtin.set_fact:
+    needs_install: "{{ (disk_size_check.stdout_lines[-1] | int) < 500 }}"
+
+- name: Show install decision
+  ansible.builtin.debug:
+    msg: "okd-node disk size: {{ disk_size_check.stdout_lines[-1] }}MB — needs_install: {{ needs_install }}"
+
+- name: Shut down okd-node if running (only if needs install)
   ansible.builtin.command:
     cmd: virsh destroy okd-node
   ignore_errors: true
+  when: needs_install | bool
 
-- name: Wait for VM to be shut off
+- name: Wait for VM to be shut off (only if needs install)
   ansible.builtin.command:
     cmd: virsh domstate okd-node
   register: vm_state
   until: vm_state.stdout.strip() == 'shut off'
   retries: 12
   delay: 5
+  when: needs_install | bool
 
-- name: Eject any existing ISO
+- name: Eject any existing ISO (only if needs install)
   ansible.builtin.command:
     cmd: virsh change-media okd-node sda --eject --config
   ignore_errors: true
+  when: needs_install | bool
 
-- name: Attach embedded SNO ISO
+- name: Attach embedded SNO ISO (only if needs install)
   ansible.builtin.command:
     cmd: >
       virsh change-media okd-node sda
       {{ sno_embedded_iso }} --insert --config
+  when: needs_install | bool
 
-- name: Start okd-node VM
+- name: Start okd-node VM (only if needs install)
   ansible.builtin.command:
     cmd: virsh start okd-node
+  when: needs_install | bool
 
-- name: Confirm VM is running
+- name: Ensure okd-node is running
   ansible.builtin.command:
     cmd: virsh domstate okd-node
   register: running_state
@@ -35,9 +63,10 @@
 
 - name: Show boot status
   ansible.builtin.debug:
-    msg: "okd-node is booting from embedded SNO ISO — SCOS installation starting"
+    msg: "{{ 'okd-node is booting from embedded SNO ISO — SCOS installation starting' if needs_install | bool else 'okd-node already installed and running — skipping ISO boot' }}"
 
-- name: Wait 90 seconds for initial boot
+- name: Wait 90 seconds for initial boot (only if fresh install)
   ansible.builtin.pause:
     seconds: 90
     prompt: "Waiting for okd-node to boot from ISO..."
+  when: needs_install | bool

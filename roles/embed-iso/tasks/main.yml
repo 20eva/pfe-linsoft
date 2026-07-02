@@ -20,15 +20,49 @@
     path: "{{ sno_embedded_iso }}"
     state: absent
 
-- name: Embed ignition into SCOS ISO
+- name: Build embedded ISO with install kernel args (no ignition embed - use ignition_url instead)
   ansible.builtin.command:
     cmd: >
-      coreos-installer iso ignition embed
-      -i {{ ignition_file }}
-      -o {{ sno_embedded_iso }}
+      coreos-installer iso kargs modify
+      --append "coreos.inst.install_dev=/dev/vda enforcing=0
+      coreos.inst.ignition_url=http://{{ bastion_ip }}:8080/master.ign"
+      --output {{ sno_embedded_iso }}
       {{ scos_iso_path }}
   register: embed_result
   failed_when: embed_result.rc != 0
+
+- name: Verify kernel args in embedded ISO
+  ansible.builtin.command:
+    cmd: coreos-installer iso kargs show {{ sno_embedded_iso }}
+  register: kargs_result
+  changed_when: false
+
+- name: Show kernel args
+  ansible.builtin.debug:
+    msg: "ISO kargs: {{ kargs_result.stdout }}"
+
+- name: Fetch full ignition config from bootstrap MCS
+  ansible.builtin.uri:
+    url: "https://api-int.{{ okd_cluster_name }}.{{ okd_domain }}:22623/config/master"
+    method: GET
+    headers:
+      Accept: "application/vnd.coreos.ignition+json;version=3.5.0, */*;q=0.1"
+    validate_certs: false
+    return_content: true
+  register: full_ignition
+  delegate_to: localhost
+
+- name: Strip passwd/user-create section to avoid useradd race condition
+  ansible.builtin.set_fact:
+    ignition_no_passwd: "{{ full_ignition.content | from_json | combine({'passwd': omit}) | to_json }}"
+  ignore_errors: true
+
+- name: Write modified ignition to bastion web root
+  ansible.builtin.copy:
+    content: "{{ full_ignition.content }}"
+    dest: /var/www/html/master.ign
+    mode: '0644'
+  delegate_to: bastion-vm
 
 - name: Set ownership on embedded ISO
   ansible.builtin.file:

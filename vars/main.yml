@@ -43,3 +43,7 @@ okd_client_url: "https://github.com/okd-project/okd/releases/download/4.20.0-okd
 scos_iso_path: /home/libvirt/isos/scos.x86_64.iso
 ignition_file: /home/libvirt/okd-install/master.ign
 sno_embedded_iso: /home/libvirt/isos/scos-embedded.iso
+
+# Missing vars for monitor-sno
+okd_install_dir: /tmp/okd-install-fresh
+okd_tools_dir: /usr/local/bin

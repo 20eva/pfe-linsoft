@@ -1,2 +1,2 @@
 ---
-pipelines_namespace: openshift-operators
+pipelines_channel: latest

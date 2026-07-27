@@ -10,18 +10,22 @@
   command: "{{ oc_bin }} new-project {{ sonarqube_namespace }}"
   ignore_errors: true
 
-- name: Label namespace
+- name: Label namespace for privileged access
   command: "{{ oc_bin }} label namespace {{ sonarqube_namespace }} pod-security.kubernetes.io/enforce=privileged --overwrite"
 
 - name: Install SonarQube via Helm
   command: >
     {{ helm_bin }} upgrade --install sonarqube sonarqube/sonarqube
     --namespace {{ sonarqube_namespace }}
-    --set account.adminPassword={{ sonarqube_admin_password }}
+    --set service.type=ClusterIP
     --set persistence.enabled=true
     --set persistence.storageClass=nfs-storage
+    --set postgresql.persistence.storageClass=nfs-storage
     --kubeconfig {{ kubeconfig }}
 
+- name: Wait for SonarQube pod
+  command: "{{ oc_bin }} wait deployment/sonarqube-sonarqube -n {{ sonarqube_namespace }} --for=condition=Available --timeout=300s"
+
 - name: Create SonarQube route
-  command: "{{ oc_bin }} expose service sonarqube-sonarqube --name=sonarqube -n {{ sonarqube_namespace }}"
+  command: "{{ oc_bin }} expose service sonarqube-sonarqube -n {{ sonarqube_namespace }}"
   ignore_errors: true

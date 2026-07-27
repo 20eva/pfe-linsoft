@@ -21,7 +21,7 @@
   command: "{{ oc_bin }} wait deployment/external-secrets -n {{ eso_namespace }} --for=condition=Available --timeout=180s"
 
 - name: Create Vault token secret
-  command: "{{ oc_bin }} create secret generic vault-token --from-literal=token={{ vault_root_token }} -n {{ eso_namespace }}"
+  command: "{{ oc_bin }} create secret generic vault-token --from-literal=token=root -n {{ eso_namespace }}"
   ignore_errors: true
 
 - name: Create ClusterSecretStore

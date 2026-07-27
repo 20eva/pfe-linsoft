@@ -15,5 +15,5 @@
         sourceNamespace: openshift-marketplace
 
 - name: Wait for Pipelines operator
-  command: "{{ oc_bin }} wait subscription/openshift-pipelines-operator -n openshift-operators --for=condition=CatalogSourcesUnhealthy=False --timeout=180s"
+  command: "{{ oc_bin }} wait deployment/tekton-pipelines-controller -n openshift-pipelines --for=condition=Available --timeout=300s"
   ignore_errors: true

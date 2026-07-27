@@ -16,5 +16,5 @@
     --namespace {{ kyverno_namespace }}
     --kubeconfig {{ kubeconfig }}
 
-- name: Wait for Kyverno
+- name: Wait for Kyverno pods
   command: "{{ oc_bin }} wait deployment/kyverno-admission-controller -n {{ kyverno_namespace }} --for=condition=Available --timeout=180s"

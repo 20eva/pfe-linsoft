@@ -1,4 +1,4 @@
 ---
 vault_namespace: vault
-vault_root_token: root
+vault_root_token: hvs.qfo0ybxrcrMuHoIab6B3n0w6
 vault_chart_version: "0.34.0"

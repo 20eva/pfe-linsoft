@@ -1,0 +1,19 @@
+---
+- name: Install OpenShift Pipelines Operator
+  command: "{{ oc_bin }} apply -f -"
+  args:
+    stdin: |
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: openshift-pipelines-operator
+        namespace: openshift-operators
+      spec:
+        channel: latest
+        name: openshift-pipelines-operator-rh
+        source: community-operators
+        sourceNamespace: openshift-marketplace
+
+- name: Wait for Pipelines operator
+  command: "{{ oc_bin }} wait subscription/openshift-pipelines-operator -n openshift-operators --for=condition=CatalogSourcesUnhealthy=False --timeout=180s"
+  ignore_errors: true

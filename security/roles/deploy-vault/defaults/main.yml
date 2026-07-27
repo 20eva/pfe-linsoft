@@ -1,0 +1,4 @@
+---
+vault_namespace: vault
+vault_root_token: root
+vault_chart_version: "0.34.0"

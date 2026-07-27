@@ -1,0 +1,27 @@
+---
+- name: Add SonarQube Helm repo
+  command: "{{ helm_bin }} repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube"
+  ignore_errors: true
+
+- name: Update Helm repos
+  command: "{{ helm_bin }} repo update"
+
+- name: Create sonarqube namespace
+  command: "{{ oc_bin }} new-project {{ sonarqube_namespace }}"
+  ignore_errors: true
+
+- name: Label namespace
+  command: "{{ oc_bin }} label namespace {{ sonarqube_namespace }} pod-security.kubernetes.io/enforce=privileged --overwrite"
+
+- name: Install SonarQube via Helm
+  command: >
+    {{ helm_bin }} upgrade --install sonarqube sonarqube/sonarqube
+    --namespace {{ sonarqube_namespace }}
+    --set account.adminPassword={{ sonarqube_admin_password }}
+    --set persistence.enabled=true
+    --set persistence.storageClass=nfs-storage
+    --kubeconfig {{ kubeconfig }}
+
+- name: Create SonarQube route
+  command: "{{ oc_bin }} expose service sonarqube-sonarqube --name=sonarqube -n {{ sonarqube_namespace }}"
+  ignore_errors: true

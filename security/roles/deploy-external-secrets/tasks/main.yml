@@ -1,0 +1,45 @@
+---
+- name: Add External Secrets Helm repo
+  command: "{{ helm_bin }} repo add external-secrets https://charts.external-secrets.io"
+  ignore_errors: true
+
+- name: Update Helm repos
+  command: "{{ helm_bin }} repo update"
+
+- name: Create external-secrets namespace
+  command: "{{ oc_bin }} new-project {{ eso_namespace }}"
+  ignore_errors: true
+
+- name: Install External Secrets Operator
+  command: >
+    {{ helm_bin }} upgrade --install external-secrets external-secrets/external-secrets
+    --namespace {{ eso_namespace }}
+    --set installCRDs=true
+    --kubeconfig {{ kubeconfig }}
+
+- name: Wait for ESO pods
+  command: "{{ oc_bin }} wait deployment/external-secrets -n {{ eso_namespace }} --for=condition=Available --timeout=180s"
+
+- name: Create Vault token secret
+  command: "{{ oc_bin }} create secret generic vault-token --from-literal=token={{ vault_root_token }} -n {{ eso_namespace }}"
+  ignore_errors: true
+
+- name: Create ClusterSecretStore
+  command: "{{ oc_bin }} apply -f -"
+  args:
+    stdin: |
+      apiVersion: external-secrets.io/v1beta1
+      kind: ClusterSecretStore
+      metadata:
+        name: vault-backend
+      spec:
+        provider:
+          vault:
+            server: "http://vault.vault.svc:8200"
+            path: "secret"
+            version: "v2"
+            auth:
+              tokenSecretRef:
+                name: vault-token
+                namespace: external-secrets
+                key: token

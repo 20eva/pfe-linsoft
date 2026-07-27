@@ -1,0 +1,58 @@
+---
+- name: Add HashiCorp Helm repo
+  command: "{{ helm_bin }} repo add hashicorp https://helm.releases.hashicorp.com"
+  ignore_errors: true
+
+- name: Update Helm repos
+  command: "{{ helm_bin }} repo update"
+
+- name: Create vault namespace
+  command: "{{ oc_bin }} new-project {{ vault_namespace }}"
+  ignore_errors: true
+
+- name: Label namespace for privileged access
+  command: "{{ oc_bin }} label namespace {{ vault_namespace }} pod-security.kubernetes.io/enforce=privileged --overwrite"
+
+- name: Install Vault via Helm
+  command: >
+    {{ helm_bin }} upgrade --install vault hashicorp/vault
+    --namespace {{ vault_namespace }}
+    --set server.dev.enabled=true
+    --set server.dev.devRootToken={{ vault_root_token }}
+    --set ui.enabled=true
+    --set injector.enabled=false
+    --kubeconfig {{ kubeconfig }}
+
+- name: Wait for Vault pod
+  command: "{{ oc_bin }} wait pod/vault-0 -n {{ vault_namespace }} --for=condition=Ready --timeout=180s"
+
+- name: Create Vault route
+  command: "{{ oc_bin }} expose service vault-ui --name=vault-ui -n {{ vault_namespace }}"
+  ignore_errors: true
+
+- name: Enable KV secrets engine
+  command: >
+    {{ oc_bin }} exec -n {{ vault_namespace }} vault-0 --
+    sh -c "VAULT_TOKEN={{ vault_root_token }} vault secrets enable -path=secret kv-v2"
+  ignore_errors: true
+
+- name: Enable Kubernetes auth
+  command: >
+    {{ oc_bin }} exec -n {{ vault_namespace }} vault-0 --
+    sh -c "VAULT_TOKEN={{ vault_root_token }} vault auth enable kubernetes"
+  ignore_errors: true
+
+- name: Configure Kubernetes auth
+  command: >
+    {{ oc_bin }} exec -n {{ vault_namespace }} vault-0 --
+    sh -c "VAULT_TOKEN={{ vault_root_token }} vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc:443"
+
+- name: Store blog-app secrets
+  command: >
+    {{ oc_bin }} exec -n {{ vault_namespace }} vault-0 --
+    sh -c "VAULT_TOKEN={{ vault_root_token }} vault kv put secret/devsecops/blog-app db_password=blog123 db_user=blog jwt_secret=MyJWTSecret2026"
+
+- name: Store sonarqube secrets
+  command: >
+    {{ oc_bin }} exec -n {{ vault_namespace }} vault-0 --
+    sh -c "VAULT_TOKEN={{ vault_root_token }} vault kv put secret/devsecops/sonarqube token=admin123 url=http://sonarqube.sonarqube.svc:9000"

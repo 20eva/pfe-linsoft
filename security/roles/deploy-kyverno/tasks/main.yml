@@ -1,0 +1,20 @@
+---
+- name: Add Kyverno Helm repo
+  command: "{{ helm_bin }} repo add kyverno https://kyverno.github.io/kyverno/"
+  ignore_errors: true
+
+- name: Update Helm repos
+  command: "{{ helm_bin }} repo update"
+
+- name: Create kyverno namespace
+  command: "{{ oc_bin }} new-project {{ kyverno_namespace }}"
+  ignore_errors: true
+
+- name: Install Kyverno via Helm
+  command: >
+    {{ helm_bin }} upgrade --install kyverno kyverno/kyverno
+    --namespace {{ kyverno_namespace }}
+    --kubeconfig {{ kubeconfig }}
+
+- name: Wait for Kyverno
+  command: "{{ oc_bin }} wait deployment/kyverno-admission-controller -n {{ kyverno_namespace }} --for=condition=Available --timeout=180s"

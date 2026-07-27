@@ -1,0 +1,8 @@
+---
+kubeconfig: /root/.kube/config
+oc_bin: /usr/local/bin/oc
+helm_bin: /usr/local/bin/helm
+vault_namespace: vault
+vault_root_token: root
+sonarqube_namespace: sonarqube
+eso_namespace: external-secrets

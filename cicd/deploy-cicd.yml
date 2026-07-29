@@ -1,0 +1,8 @@
+---
+- name: Deploy CI/CD Layer
+  hosts: host
+  gather_facts: false
+  vars_files:
+    - ../security/vars/main.yml
+  roles:
+    - deploy-tekton-pipeline

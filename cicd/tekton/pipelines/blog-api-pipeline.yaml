@@ -1,0 +1,72 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: blog-api-pipeline
+  namespace: blog-app
+spec:
+  params:
+  - name: git-url
+    type: string
+    default: https://github.com/20eva/pfe-linsoft.git
+  - name: git-revision
+    type: string
+    default: sample-app
+  - name: sonar-url
+    type: string
+    default: http://sonarqube-sonarqube-sonarqube.apps.sno.okd.local
+  - name: sonar-token
+    type: string
+    default: sqa_1d42f73fe7327e9da1aab1e212dd9f24f9d178ce
+  tasks:
+  - name: clone
+    taskSpec:
+      steps:
+      - name: clone
+        image: alpine/git
+        env:
+        - name: GIT_TERMINAL_PROMPT
+          value: "0"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          git clone --branch $(params.git-revision) --depth 1 $(params.git-url) /workspace/source
+          echo "Clone successful"
+          ls /workspace/source
+      workspaces:
+      - name: output
+        mountPath: /workspace/source
+    params:
+    - name: git-url
+      value: $(params.git-url)
+    - name: git-revision
+      value: $(params.git-revision)
+    workspaces:
+    - name: output
+      workspace: source
+  - name: sonarqube-scan
+    runAfter: [clone]
+    taskSpec:
+      steps:
+      - name: scan
+        image: sonarsource/sonar-scanner-cli:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          sonar-scanner \
+            -Dsonar.projectKey=nodejs-blog-api \
+            -Dsonar.sources=/workspace/source/src \
+            -Dsonar.host.url=$(params.sonar-url) \
+            -Dsonar.token=$(params.sonar-token)
+      workspaces:
+      - name: source
+        mountPath: /workspace/source
+    params:
+    - name: sonar-url
+      value: $(params.sonar-url)
+    - name: sonar-token
+      value: $(params.sonar-token)
+    workspaces:
+    - name: source
+      workspace: source
+  workspaces:
+  - name: source

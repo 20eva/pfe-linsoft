@@ -1,0 +1,6 @@
+---
+blog_app_namespace: blog-app
+git_url: https://github.com/20eva/pfe-linsoft.git
+git_revision: sample-app
+sonar_url: http://sonarqube-sonarqube-sonarqube.apps.sno.okd.local
+sonar_token: sqa_1d42f73fe7327e9da1aab1e212dd9f24f9d178ce

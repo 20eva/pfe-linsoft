@@ -1,0 +1,11 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: blog-api-run
+  namespace: blog-app
+spec:
+  pipelineRef:
+    name: blog-api-pipeline
+  workspaces:
+  - name: source
+    emptyDir: {}

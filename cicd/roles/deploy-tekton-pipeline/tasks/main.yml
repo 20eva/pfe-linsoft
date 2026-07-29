@@ -1,0 +1,13 @@
+---
+- name: Create blog-app namespace
+  command: "{{ oc_bin }} new-project {{ blog_app_namespace }}"
+  ignore_errors: true
+
+- name: Deploy Tekton pipeline
+  command: "{{ oc_bin }} apply -f {{ playbook_dir }}/tekton/pipelines/blog-api-pipeline.yaml"
+
+- name: Run pipeline
+  command: "{{ oc_bin }} apply -f {{ playbook_dir }}/tekton/pipelineruns/blog-api-run.yaml"
+
+- name: Wait for pipeline to complete
+  command: "{{ oc_bin }} wait pipelinerun/blog-api-run -n {{ blog_app_namespace }} --for=condition=Succeeded --timeout=30m"

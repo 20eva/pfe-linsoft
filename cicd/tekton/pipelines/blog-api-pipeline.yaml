@@ -48,15 +48,21 @@ spec:
     taskSpec:
       steps:
       - name: scan
-        image: sonarsource/sonar-scanner-cli:latest
+        image: node:18-alpine
         command: ["/bin/sh", "-c"]
         args:
         - |
+          apk add --no-cache openjdk17 curl unzip
+          curl -sSL https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip -o /tmp/sonar.zip
+          unzip -q /tmp/sonar.zip -d /opt/
+          export PATH="/opt/sonar-scanner-6.2.1.4610-linux-x64/bin:$PATH"
+          cd /workspace/source
           sonar-scanner \
             -Dsonar.projectKey=nodejs-blog-api \
-            -Dsonar.sources=/workspace/source/src \
+            -Dsonar.sources=src \
             -Dsonar.host.url=$(params.sonar-url) \
-            -Dsonar.token=$(params.sonar-token)
+            -Dsonar.token=$(params.sonar-token) \
+            -Dsonar.projectBaseDir=/workspace/source
       workspaces:
       - name: source
         mountPath: /workspace/source

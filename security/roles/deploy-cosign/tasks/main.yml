@@ -1,0 +1,22 @@
+---
+- name: Install Cosign
+  get_url:
+    url: https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+    dest: /usr/local/bin/cosign
+    mode: '0755'
+
+- name: Generate Cosign key pair
+  shell: |
+    printf "{{ cosign_password }}\n{{ cosign_password }}\n" | cosign generate-key-pair --output-key-prefix /etc/cosign
+  args:
+    creates: /etc/cosign.key
+
+- name: Store keys in Vault
+  shell: |
+    PRIVATE_KEY=$(cat /etc/cosign.key | base64 -w0)
+    PUBLIC_KEY=$(cat /etc/cosign.pub | base64 -w0)
+    {{ oc_bin }} exec -n {{ vault_namespace }} vault-0 -- sh -c \
+      "VAULT_TOKEN={{ vault_root_token }} vault kv put secret/devsecops/cosign private_key=$PRIVATE_KEY public_key=$PUBLIC_KEY password={{ cosign_password }}"
+
+- name: Apply Kyverno image policy
+  command: "{{ oc_bin }} apply -f /tmp/pfe-linsoft/security/kyverno-policies/verify-image-signature.yaml"

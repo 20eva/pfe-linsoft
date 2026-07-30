@@ -1,0 +1,11 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: blog-api
+  namespace: blog-app
+spec:
+  to:
+    kind: Service
+    name: blog-api
+  port:
+    targetPort: 3000

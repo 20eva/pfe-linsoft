@@ -1,0 +1,29 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature
+spec:
+  validationFailureAction: Audit
+  background: false
+  rules:
+  - name: verify-cosign-signature
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - blog-app
+    verifyImages:
+    - imageReferences:
+      - "ghcr.io/20eva/*"
+      mutateDigest: false
+      attestors:
+      - count: 1
+        entries:
+        - keys:
+            publicKeys: |
+              -----BEGIN PUBLIC KEY-----
+              MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDfwCRWlK5ANmKWTFbPUv+BlUyPxJ
+              2rDvXady7U+ZmDMxpi3g96My5tcGF4Qba4oRSL9UsPe1Q1p63lxJTmUpww==
+              -----END PUBLIC KEY-----

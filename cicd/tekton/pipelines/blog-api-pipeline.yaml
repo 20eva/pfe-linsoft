@@ -23,15 +23,14 @@ spec:
       steps:
       - name: clone
         image: alpine/git
-        env:
-        - name: GIT_TERMINAL_PROMPT
-          value: "0"
         command: ["/bin/sh", "-c"]
         args:
         - |
-          git clone --branch $(params.git-revision) --depth 1 $(params.git-url) /workspace/source
-          echo "Clone successful"
-          ls /workspace/source
+          set -e
+          rm -rf /workspace/source/app 2>/dev/null || true
+          git clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app
+          echo Clone_SUCCESS
+          ls /workspace/source/app/
       workspaces:
       - name: output
         mountPath: /workspace/source
@@ -43,26 +42,43 @@ spec:
     workspaces:
     - name: output
       workspace: source
-  - name: sonarqube-scan
+  - name: build
     runAfter: [clone]
     taskSpec:
       steps:
-      - name: scan
+      - name: npm-build
         image: node:18-alpine
         command: ["/bin/sh", "-c"]
         args:
         - |
-          apk add --no-cache openjdk17 curl unzip
-          curl -sSL https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip -o /tmp/sonar.zip
-          unzip -q /tmp/sonar.zip -d /opt/
-          export PATH="/opt/sonar-scanner-6.2.1.4610-linux-x64/bin:$PATH"
-          cd /workspace/source
+          set -e
+          cd /workspace/source/app
+          npm install --legacy-peer-deps
+          ./node_modules/.bin/nx build api --configuration=production
+          echo BUILD_SUCCESS
+          ls /workspace/source/app/dist/api/
+      workspaces:
+      - name: source
+        mountPath: /workspace/source
+    workspaces:
+    - name: source
+      workspace: source
+  - name: sonarqube-scan
+    runAfter: [build]
+    taskSpec:
+      steps:
+      - name: scan
+        image: sonarsource/sonar-scanner-cli:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
           sonar-scanner \
             -Dsonar.projectKey=nodejs-blog-api \
-            -Dsonar.sources=src \
+            -Dsonar.sources=/workspace/source/app/src \
             -Dsonar.host.url=$(params.sonar-url) \
             -Dsonar.token=$(params.sonar-token) \
-            -Dsonar.projectBaseDir=/workspace/source
+            -Dsonar.projectBaseDir=/workspace/source/app \
+            -Dsonar.working.directory=/tmp/.scannerwork
       workspaces:
       - name: source
         mountPath: /workspace/source
@@ -74,5 +90,16 @@ spec:
     workspaces:
     - name: source
       workspace: source
+  - name: quality-gate
+    runAfter: [sonarqube-scan]
+    taskRef:
+      name: quality-gate-check
+    params:
+    - name: sonar-url
+      value: $(params.sonar-url)
+    - name: sonar-token
+      value: $(params.sonar-token)
+    - name: project-key
+      value: nodejs-blog-api
   workspaces:
   - name: source

@@ -2,7 +2,28 @@
 - name: Deploy CI/CD Layer
   hosts: host
   gather_facts: false
-  vars_files:
-    - ../security/vars/main.yml
-  roles:
-    - deploy-tekton-pipeline
+  vars:
+    oc_bin: /usr/local/bin/oc
+    kubeconfig: /root/.kube/config
+    blog_app_namespace: blog-app
+  tasks:
+  - name: Create blog-app namespace
+    command: "{{ oc_bin }} new-project {{ blog_app_namespace }}"
+    ignore_errors: true
+
+  - name: Create pipeline workspace PVC
+    command: "{{ oc_bin }} apply -f /tmp/pfe-linsoft/cicd/tekton/pipelineruns/pipeline-pvc.yaml"
+    ignore_errors: true
+
+  - name: Apply quality gate task
+    command: "{{ oc_bin }} apply -f /tmp/pfe-linsoft/cicd/tekton/tasks/quality-gate-check.yaml"
+
+  - name: Apply Tekton pipeline
+    command: "{{ oc_bin }} apply -f /tmp/pfe-linsoft/cicd/tekton/pipelines/blog-api-pipeline.yaml"
+
+  - name: Delete old pipelinerun if exists
+    command: "{{ oc_bin }} delete pipelinerun blog-api-run -n {{ blog_app_namespace }}"
+    ignore_errors: true
+
+  - name: Apply PipelineRun
+    command: "{{ oc_bin }} apply -f /tmp/pfe-linsoft/cicd/tekton/pipelineruns/blog-api-run.yaml"

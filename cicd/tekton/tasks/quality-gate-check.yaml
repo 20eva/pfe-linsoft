@@ -1,0 +1,27 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: quality-gate-check
+  namespace: blog-app
+spec:
+  params:
+  - name: sonar-url
+    type: string
+  - name: sonar-token
+    type: string
+  - name: project-key
+    type: string
+  steps:
+  - name: check-gate
+    image: curlimages/curl:latest
+    script: |
+      #!/bin/sh
+      STATUS=$(curl -s -u "admin:@Holaamigos2002" \
+        "$(params.sonar-url)/api/qualitygates/project_status?projectKey=$(params.project-key)" \
+        | grep -o '"status":"[^"]*"' | head -1 | cut -d: -f2 | tr -d '"')
+      echo "Quality Gate Status: $STATUS"
+      if [ "$STATUS" != "OK" ]; then
+        echo "QUALITY GATE FAILED - Pipeline blocked!"
+        exit 1
+      fi
+      echo "QUALITY GATE PASSED"

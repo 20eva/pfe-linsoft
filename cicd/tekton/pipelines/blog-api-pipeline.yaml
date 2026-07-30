@@ -16,7 +16,7 @@ spec:
     default: http://sonarqube-sonarqube-sonarqube.apps.sno.okd.local
   - name: sonar-token
     type: string
-    default: sqa_1d42f73fe7327e9da1aab1e212dd9f24f9d178ce
+    default: sqa_d51f6965f6610488cb7bc6ec7d3e627ef40fb593
   tasks:
   - name: clone
     taskSpec:

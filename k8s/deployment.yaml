@@ -17,11 +17,10 @@ spec:
     spec:
       containers:
       - name: blog-api
-        image: ghcr.io/20eva/blog-api:latest
+        image: node:18-alpine
+        command: ["/bin/sh", "-c", "echo 'Blog API placeholder' && sleep infinity"]
         ports:
         - containerPort: 3000
         env:
         - name: PORT
           value: "3000"
-        - name: HOST
-          value: "0.0.0.0"

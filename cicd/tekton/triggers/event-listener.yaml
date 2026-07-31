@@ -1,0 +1,13 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: blog-api-event-listener
+  namespace: blog-app
+spec:
+  serviceAccountName: pipeline
+  triggers:
+  - name: github-push
+    bindings:
+    - ref: blog-api-trigger-binding
+    template:
+      ref: blog-api-trigger-template

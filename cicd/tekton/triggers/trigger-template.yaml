@@ -1,0 +1,19 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: blog-api-trigger-template
+  namespace: blog-app
+spec:
+  resourcetemplates:
+  - apiVersion: tekton.dev/v1
+    kind: PipelineRun
+    metadata:
+      generateName: blog-api-triggered-
+      namespace: blog-app
+    spec:
+      pipelineRef:
+        name: blog-api-pipeline
+      workspaces:
+      - name: source
+        persistentVolumeClaim:
+          claimName: pipeline-workspace-pvc

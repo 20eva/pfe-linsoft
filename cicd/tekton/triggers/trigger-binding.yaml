@@ -1,0 +1,9 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: blog-api-trigger-binding
+  namespace: blog-app
+spec:
+  params:
+  - name: git-revision
+    value: $(body.ref)

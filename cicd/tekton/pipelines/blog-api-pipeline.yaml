@@ -17,6 +17,9 @@ spec:
   - name: sonar-token
     type: string
     default: sqa_d51f6965f6610488cb7bc6ec7d3e627ef40fb593
+  - name: image-url
+    type: string
+    default: image-registry.openshift-image-registry.svc:5000/blog-app/blog-api
   tasks:
   - name: clone
     taskSpec:
@@ -28,7 +31,7 @@ spec:
         - |
           set -e
           rm -rf /workspace/source/app 2>/dev/null || true
-          git clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app
+          git clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app
           echo Clone_SUCCESS
           ls /workspace/source/app/
       workspaces:
@@ -56,7 +59,6 @@ spec:
           npm install --legacy-peer-deps
           ./node_modules/.bin/nx build api --configuration=production
           echo BUILD_SUCCESS
-          ls /workspace/source/app/dist/api/
       workspaces:
       - name: source
         mountPath: /workspace/source
@@ -101,5 +103,73 @@ spec:
       value: $(params.sonar-token)
     - name: project-key
       value: nodejs-blog-api
+  - name: docker-build
+    runAfter: [quality-gate]
+    taskSpec:
+      steps:
+      - name: build-push
+        image: quay.io/buildah/stable:latest
+        securityContext:
+          privileged: true
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -e
+          cd /workspace/source/app
+          buildah build \
+            --tls-verify=false \
+            -t $(params.image-url):latest \
+            -t $(params.image-url):$(cat /workspace/source/app/.git/ORIG_HEAD 2>/dev/null || echo latest) \
+            .
+          buildah push \
+            --tls-verify=false \
+            $(params.image-url):latest
+          echo "DOCKER_BUILD_SUCCESS"
+      workspaces:
+      - name: source
+        mountPath: /workspace/source
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    workspaces:
+    - name: source
+      workspace: source
+  - name: trivy-scan
+    runAfter: [docker-build]
+    taskSpec:
+      steps:
+      - name: scan
+        image: aquasec/trivy:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          trivy image \
+            --insecure \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format table \
+            $(params.image-url):latest
+          echo "TRIVY_SCAN_COMPLETE"
+    params:
+    - name: image-url
+      value: $(params.image-url)
+  - name: cosign-sign
+    runAfter: [trivy-scan]
+    taskSpec:
+      steps:
+      - name: sign
+        image: bitnami/cosign:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "$(cat /etc/cosign.key)" > /tmp/cosign.key
+          COSIGN_PASSWORD=userOcp123 cosign sign \
+            --key /tmp/cosign.key \
+            --tls-verify=false \
+            $(params.image-url):latest
+          echo "IMAGE_SIGNED_SUCCESS"
+    params:
+    - name: image-url
+      value: $(params.image-url)
   workspaces:
   - name: source

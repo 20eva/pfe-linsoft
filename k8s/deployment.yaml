@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: blog-api
-        image: ghcr.io/20eva/blog-api:latest
+        image: ghcr.io/20eva/blog-api@
         ports:
         - containerPort: 3000
         env:

@@ -19,7 +19,7 @@ spec:
       - name: ghcr-pull-secret
       containers:
       - name: blog-api
-        image: ghcr.io/20eva/blog-api@sha256:b1bb47cc7915da3509279d42a181bcdedfc742cf1c6804f19471ef1f09c7ea63
+        image: ghcr.io/20eva/blog-api@sha256:84f0582cef58ab699a67ac125a92bfb2a57acff0f06434938afb72c0c4cf3049
         ports:
         - containerPort: 3000
         env:

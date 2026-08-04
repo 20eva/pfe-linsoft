@@ -1,57 +1,115 @@
+
 generator client {
+
   provider        = "prisma-client-js"
+
   previewFeatures = []
+
 }
+
+
 
 datasource db {
+
   provider = "sqlite"
-  url      = env("DATABASE_URL")
+
+  url      = "file:/app/api/dev.db"
+
 }
+
+
 
 model Article {
+
   id          Int       @id @default(autoincrement())
+
   slug        String    @unique
+
   title       String
+
   description String
+
   body        String
+
   createdAt   DateTime  @default(now())
+
   updatedAt   DateTime  @default(now())
+
   tagList     Tag[]
+
   author      User      @relation("UserArticles", fields: [authorId], onDelete: Cascade, references: [id])
+
   authorId    Int
+
   favoritedBy User[]    @relation("UserFavorites")
+
   comments    Comment[]
+
 }
+
+
 
 model Comment {
+
   id        Int      @id @default(autoincrement())
+
   createdAt DateTime @default(now())
+
   updatedAt DateTime @default(now())
+
   body      String
-  author    User     @relation("UserComments", fields: [authorId], onDelete: Cascade, references: [id])
+
+  author    User    @relation("UserComments", fields: [authorId], onDelete: Cascade, references: [id])
+
   authorId  Int
-  article   Article  @relation(fields: [articleId], onDelete: Cascade, references: [id])
+
+  article   Article @relation(fields: [articleId], onDelete: Cascade, references: [id])
+
   articleId Int
+
 }
+
+
 
 model User {
+
   id               Int       @id @default(autoincrement())
+
   email            String    @unique
+
   username         String    @unique
+
   password         String
+
   bio              String?
+
   image            String?
+
   createdAt        DateTime  @default(now())
+
   updatedAt        DateTime  @default(now())
+
   articles         Article[] @relation("UserArticles")
+
   comments         Comment[] @relation("UserComments")
+
   favoritedArticles Article[] @relation("UserFavorites")
+
+  followedBy       User[]    @relation("UserFollows")
+
   following        User[]    @relation("UserFollows")
-  followers        User[]    @relation("UserFollows")
+
 }
 
+
+
 model Tag {
+
   id       Int       @id @default(autoincrement())
+
   name     String    @unique
+
   articles Article[]
+
 }
+

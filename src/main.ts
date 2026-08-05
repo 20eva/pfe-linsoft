@@ -59,3 +59,4 @@ app.listen(PORT, () => {
 // Demo trigger Tue Aug  4 09:01:18 PM CET 2026
 // Webhook test Tue Aug  4 09:10:35 PM CET 2026
 // Final demo test Tue Aug  4 10:20:39 PM CET 2026
+// Bore tunnel test Wed Aug  5 07:59:18 AM CET 2026

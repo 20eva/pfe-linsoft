@@ -33,7 +33,6 @@ spec:
           rm -rf /workspace/source/app 2>/dev/null || true
           git clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app
           echo Clone_SUCCESS
-          ls /workspace/source/app/
       workspaces:
       - name: output
         mountPath: /workspace/source
@@ -116,15 +115,9 @@ spec:
         - |
           set -e
           cd /workspace/source/app
-          buildah build \
-            --tls-verify=false \
-            -t $(params.image-url):latest \
-            -t $(params.image-url):$(cat /workspace/source/app/.git/ORIG_HEAD 2>/dev/null || echo latest) \
-            .
-          buildah push \
-            --tls-verify=false \
-            $(params.image-url):latest
-          echo "DOCKER_BUILD_SUCCESS"
+          buildah build --tls-verify=false -t $(params.image-url):latest .
+          buildah push --tls-verify=false $(params.image-url):latest
+          echo DOCKER_BUILD_SUCCESS
       workspaces:
       - name: source
         mountPath: /workspace/source
@@ -149,7 +142,7 @@ spec:
             --severity HIGH,CRITICAL \
             --format table \
             $(params.image-url):latest
-          echo "TRIVY_SCAN_COMPLETE"
+          echo TRIVY_SCAN_COMPLETE
     params:
     - name: image-url
       value: $(params.image-url)
@@ -162,12 +155,18 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          echo "$(cat /etc/cosign.key)" > /tmp/cosign.key
           COSIGN_PASSWORD=userOcp123 cosign sign \
-            --key /tmp/cosign.key \
-            --tls-verify=false \
+            --key /etc/cosign/cosign.key \
+            --allow-insecure-registry \
             $(params.image-url):latest
-          echo "IMAGE_SIGNED_SUCCESS"
+          echo IMAGE_SIGNED_SUCCESS
+        volumeMounts:
+        - name: cosign-key
+          mountPath: /etc/cosign
+      volumes:
+      - name: cosign-key
+        secret:
+          secretName: cosign-key-secret
     params:
     - name: image-url
       value: $(params.image-url)

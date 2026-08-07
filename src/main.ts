@@ -74,3 +74,4 @@ app.listen(PORT, () => {
 // kaniko test Fri Aug  7 03:14:01 PM CET 2026
 // registry hostname fix Fri Aug  7 03:21:13 PM CET 2026
 // pipeline-sa fix Fri Aug  7 03:32:04 PM CET 2026
+// kaniko config.json fix Fri Aug  7 03:39:54 PM CET 2026

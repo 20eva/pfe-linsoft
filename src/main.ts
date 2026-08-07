@@ -71,3 +71,4 @@ app.listen(PORT, () => {
 // registry push fix Fri Aug  7 01:12:17 PM CET 2026
 // timeout fix test Fri Aug  7 02:23:22 PM CET 2026
 // registry auth fix Fri Aug  7 02:48:04 PM CET 2026
+// kaniko test Fri Aug  7 03:14:01 PM CET 2026

@@ -62,3 +62,4 @@ app.listen(PORT, () => {
 // Bore tunnel test Wed Aug  5 07:59:18 AM CET 2026
 // Demo Wed Aug  5 08:27:44 AM CET 2026
 // Demo ready Wed Aug  5 08:40:25 AM CET 2026
+// E2E test Fri Aug  7 10:32:54 AM CET 2026

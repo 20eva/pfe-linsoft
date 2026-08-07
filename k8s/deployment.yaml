@@ -1,29 +1,55 @@
+
 apiVersion: apps/v1
+
 kind: Deployment
+
 metadata:
+
   name: blog-api
+
   namespace: blog-app
+
   labels:
+
     app: blog-api
+
 spec:
+
   replicas: 1
+
   selector:
+
     matchLabels:
+
       app: blog-api
+
   template:
+
     metadata:
+
       labels:
+
         app: blog-api
+
     spec:
-      imagePullSecrets:
-      - name: ghcr-pull-secret
+
       containers:
+
       - name: blog-api
-        image: ghcr.io/20eva/blog-api@sha256:84f0582cef58ab699a67ac125a92bfb2a57acff0f06434938afb72c0c4cf3049
+
+        image: image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api:latest
+
         ports:
+
         - containerPort: 3000
+
         env:
+
         - name: PORT
+
           value: "3000"
+
         - name: HOST
+
           value: "0.0.0.0"
+

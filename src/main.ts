@@ -89,3 +89,4 @@ app.listen(PORT, () => {
 // cache clear fix Sat Aug  8 03:29:33 PM CET 2026
 // node20 sonar fix Sat Aug  8 03:34:30 PM CET 2026
 // sonar login fix Sat Aug  8 03:40:40 PM CET 2026
+// revert to working sonar config Sat Aug  8 03:48:11 PM CET 2026

@@ -96,3 +96,4 @@ app.listen(PORT, () => {
 // sonar env var token Sat Aug  8 04:20:12 PM CET 2026
 // scannerwork fix Sat Aug  8 05:12:17 PM CET 2026
 // sonar from tmp Sat Aug  8 05:17:41 PM CET 2026
+// sonar opts env var Sun Aug  9 11:11:45 AM CET 2026

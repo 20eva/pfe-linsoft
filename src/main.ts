@@ -104,3 +104,4 @@ app.listen(PORT, () => {
 // Demo pipeline Sat Aug 29 07:40:08 PM CET 2026
 // Demo Tue Sep  1 11:30:01 AM CET 2026
 // trigger Tue Sep  1 11:41:45 AM CET 2026
+// auth fix Tue Sep  1 11:57:55 AM CET 2026

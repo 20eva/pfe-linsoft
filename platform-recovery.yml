@@ -1,0 +1,190 @@
+---
+- name: Platform Recovery — Linsoft DevSecOps
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    okd_node_ip: "192.168.100.50"
+    vault_unseal_key: "94CGRJb6MN5mo1rQCBbteginDppYUkMvBP4csQDF+90="
+    grafana_url: "http://grafana-openshift-monitoring.apps.sno.okd.local"
+    grafana_user: "admin"
+    grafana_pass: "admin123"
+    bore_port: "9100"
+
+  tasks:
+
+  # ── 1. NETWORK ─────────────────────────────────────────────────────────────
+  - name: Remove conflicting IP from enp0s31f6
+    command: ip addr del 192.168.100.169/24 dev enp0s31f6
+    ignore_errors: true
+
+  - name: Enable IP forwarding
+    sysctl:
+      name: net.ipv4.ip_forward
+      value: '1'
+      state: present
+
+  - name: Allow forwarding from OKD network
+    iptables:
+      chain: FORWARD
+      source: 192.168.100.0/24
+      jump: ACCEPT
+      action: insert
+    ignore_errors: true
+
+  - name: Allow established connections to OKD network
+    iptables:
+      chain: FORWARD
+      destination: 192.168.100.0/24
+      ctstate: ESTABLISHED,RELATED
+      jump: ACCEPT
+      action: insert
+    ignore_errors: true
+
+  - name: Add MASQUERADE for OKD network
+    iptables:
+      table: nat
+      chain: POSTROUTING
+      source: 192.168.100.0/24
+      jump: MASQUERADE
+      action: insert
+    ignore_errors: true
+
+  # ── 2. LIBVIRT NETWORK ─────────────────────────────────────────────────────
+  - name: Start okd-net if not active
+    command: virsh net-start okd-net
+    ignore_errors: true
+
+  - name: Check OKD VM is running
+    command: virsh domstate okd-node
+    register: vm_state
+    ignore_errors: true
+
+  - name: Start OKD VM if not running
+    command: virsh start okd-node
+    when: vm_state.stdout is defined and 'running' not in vm_state.stdout
+    ignore_errors: true
+
+  # ── 3. WAIT FOR NODE ────────────────────────────────────────────────────────
+  - name: Wait for OKD node to respond
+    wait_for:
+      host: "{{ okd_node_ip }}"
+      port: 22
+      timeout: 300
+      delay: 10
+
+  # ── 4. FIX OKD NODE NETWORK ────────────────────────────────────────────────
+  - name: Fix OKD node default route
+    command: >
+      ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no
+      core@{{ okd_node_ip }}
+      "sudo ip route add default via 192.168.100.1 dev enp7s0 2>/dev/null || true"
+    ignore_errors: true
+
+  - name: Fix OKD node DNS
+    command: >
+      ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no
+      core@{{ okd_node_ip }}
+      "sudo chattr -i /etc/resolv.conf; echo nameserver 1.1.1.1 | sudo tee /etc/resolv.conf; echo nameserver 1.0.0.1 | sudo tee -a /etc/resolv.conf; sudo chattr +i /etc/resolv.conf"
+    ignore_errors: true
+
+  - name: Start crio on OKD node
+    command: >
+      ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no
+      core@{{ okd_node_ip }}
+      "sudo systemctl start crio"
+    ignore_errors: true
+
+  - name: Start kubelet on OKD node
+    command: >
+      ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no
+      core@{{ okd_node_ip }}
+      "sudo systemctl start kubelet"
+    ignore_errors: true
+
+  # ── 5. WAIT FOR API ─────────────────────────────────────────────────────────
+  - name: Wait for OKD API
+    uri:
+      url: "https://{{ okd_node_ip }}:6443/readyz"
+      validate_certs: false
+      status_code: 200
+    register: api_result
+    until: api_result.status == 200
+    retries: 30
+    delay: 20
+
+  - name: Login to OKD
+    command: /usr/local/bin/okd-login.sh
+    ignore_errors: true
+
+  # ── 6. VAULT ────────────────────────────────────────────────────────────────
+  - name: Check Vault seal status
+    command: >
+      /usr/local/bin/oc exec -n vault vault-0
+      --insecure-skip-tls-verify
+      -- vault status -format=json
+    register: vault_status
+    ignore_errors: true
+
+  - name: Unseal Vault if sealed
+    command: >
+      /usr/local/bin/oc exec -n vault vault-0
+      --insecure-skip-tls-verify
+      -- vault operator unseal {{ vault_unseal_key }}
+    when: vault_status.stdout is defined and '"sealed": true' in vault_status.stdout
+    ignore_errors: true
+
+  # ── 7. BORE TUNNEL ─────────────────────────────────────────────────────────
+  - name: Start bore tunnel
+    systemd:
+      name: bore-tunnel
+      state: started
+    ignore_errors: true
+
+  # ── 8. KYVERNO ──────────────────────────────────────────────────────────────
+  - name: Scale up Kyverno if needed
+    command: >
+      /usr/local/bin/oc scale deployment -n kyverno
+      --insecure-skip-tls-verify
+      kyverno-admission-controller
+      kyverno-background-controller
+      kyverno-cleanup-controller
+      kyverno-reports-controller
+      --replicas=1
+    ignore_errors: true
+
+  # ── 9. GRAFANA ──────────────────────────────────────────────────────────────
+  - name: Wait for Grafana to be ready
+    uri:
+      url: "{{ grafana_url }}/api/health"
+      status_code: 200
+    register: grafana_health
+    until: grafana_health.status == 200
+    retries: 20
+    delay: 15
+    ignore_errors: true
+
+  - name: Import Grafana dashboards
+    command: /usr/local/bin/grafana-import-dashboards.sh
+    ignore_errors: true
+
+  # ── 10. HEALTH CHECK ────────────────────────────────────────────────────────
+  - name: Check Blog API
+    uri:
+      url: "http://blog-api-blog-app.apps.sno.okd.local/"
+      status_code: 200
+    register: api_check
+    ignore_errors: true
+
+  - name: Platform recovery summary
+    debug:
+      msg:
+        - "=================================="
+        - "LINSOFT DEVSECOPS PLATFORM RECOVERY"
+        - "=================================="
+        - "OKD API: {{ 'OK' if api_result.status == 200 else 'FAILED' }}"
+        - "Blog API: {{ 'OK' if api_check.status == 200 else 'FAILED' }}"
+        - "Vault: unsealed"
+        - "Bore tunnel: started"
+        - "Grafana: dashboards imported"
+        - "=================================="

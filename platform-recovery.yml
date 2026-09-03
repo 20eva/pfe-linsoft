@@ -14,40 +14,15 @@
   tasks:
 
   # ── 1. NETWORK ─────────────────────────────────────────────────────────────
-  - name: Remove conflicting IP from enp0s31f6
-    command: ip addr del 192.168.100.169/24 dev enp0s31f6
-    ignore_errors: true
-
-  - name: Enable IP forwarding
-    sysctl:
-      name: net.ipv4.ip_forward
-      value: '1'
-      state: present
-
-  - name: Allow forwarding from OKD network
-    iptables:
-      chain: FORWARD
-      source: 192.168.100.0/24
-      jump: ACCEPT
-      action: insert
-    ignore_errors: true
-
-  - name: Allow established connections to OKD network
-    iptables:
-      chain: FORWARD
-      destination: 192.168.100.0/24
-      ctstate: ESTABLISHED,RELATED
-      jump: ACCEPT
-      action: insert
-    ignore_errors: true
-
-  - name: Add MASQUERADE for OKD network
-    iptables:
-      table: nat
-      chain: POSTROUTING
-      source: 192.168.100.0/24
-      jump: MASQUERADE
-      action: insert
+  - name: Fix host network
+    shell: |
+      ip addr del 192.168.100.169/24 dev enp0s31f6 2>/dev/null || true
+      echo 1 > /proc/sys/net/ipv4/ip_forward
+      iptables -I FORWARD 1 -s 192.168.100.0/24 -j ACCEPT 2>/dev/null || true
+      iptables -I FORWARD 1 -d 192.168.100.0/24 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+      iptables -t nat -I POSTROUTING 1 -s 192.168.100.0/24 -j MASQUERADE 2>/dev/null || true
+    args:
+      executable: /bin/bash
     ignore_errors: true
 
   # ── 2. LIBVIRT NETWORK ─────────────────────────────────────────────────────

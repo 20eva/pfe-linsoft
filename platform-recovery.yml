@@ -1,7 +1,7 @@
 ---
 - name: Platform Recovery — Linsoft DevSecOps
-  hosts: localhost
-  connection: local
+  hosts: host
+  connection: ssh
   gather_facts: false
   vars:
     okd_node_ip: "192.168.100.50"

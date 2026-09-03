@@ -131,7 +131,7 @@
       /usr/local/bin/oc exec -n vault vault-0
       --insecure-skip-tls-verify
       -- vault operator unseal {{ vault_unseal_key }}
-    when: vault_status.stdout is defined and "sealed: true" in vault_status.stdout
+    when: vault_status.stdout is defined and 'sealed' in vault_status.stdout
     ignore_errors: true
 
   # ── 7. BORE TUNNEL ─────────────────────────────────────────────────────────

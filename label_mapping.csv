@@ -1,0 +1,13 @@
+label_id,smell_code
+0,implementation_long_statement
+1,design_duplicate_block
+2,sec_def_admin
+3,sec_hard_secr
+4,sec_hard_user
+5,sec_hard_pass
+6,sec_invalid_bind
+7,sec_susp_comm
+8,sec_empty_pass
+9,sec_https
+10,sec_weak_crypt
+11,sec_no_int_check

@@ -1,0 +1,5 @@
+Model,Accuracy,Issue Precision,Issue Recall,Issue F1
+Random Forest,0.859,0.897,0.727,0.803
+Linear SVM,0.853,0.865,0.743,0.799
+Logistic Regression,0.836,0.842,0.72,0.776
+Multinomial Naive Bayes,0.825,0.874,0.65,0.745

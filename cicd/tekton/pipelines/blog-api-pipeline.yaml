@@ -1,100 +1,1045 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"tekton.dev/v1","kind":"Pipeline","metadata":{"annotations":{},"creationTimestamp":"2026-07-29T08:28:15Z","generation":67,"name":"blog-api-pipeline","namespace":"blog-app","resourceVersion":"27203997","uid":"c86d68bb-86ad-4c8e-a568-22c3ffc47e3b"},"spec":{"finally":[{"name":"notify-pipeline-status","params":[{"name":"pipelinerun-name","value":"$(context.pipelineRun.name)"},{"name":"clone-status","value":"$(tasks.clone.status)"},{"name":"build-status","value":"$(tasks.build.status)"},{"name":"sonarqube-scan-status","value":"$(tasks.sonarqube-scan.status)"},{"name":"quality-gate-status","value":"$(tasks.quality-gate.status)"},{"name":"docker-build-status","value":"$(tasks.docker-build.status)"},{"name":"trivy-scan-status","value":"$(tasks.trivy-scan.status)"},{"name":"cosign-sign-status","value":"$(tasks.cosign-sign.status)"},{"name":"deploy-status","value":"$(tasks.deploy.status)"},{"name":"detection-status","value":"$(tasks.detection-recommendation.status)"}],"taskSpec":{"metadata":{},"params":[{"name":"pipelinerun-name","type":"string"},{"name":"clone-status","type":"string"},{"name":"build-status","type":"string"},{"name":"sonarqube-scan-status","type":"string"},{"name":"quality-gate-status","type":"string"},{"name":"docker-build-status","type":"string"},{"name":"trivy-scan-status","type":"string"},{"name":"cosign-sign-status","type":"string"},{"name":"deploy-status","type":"string"},{"default":"Unknown","name":"detection-status","type":"string"}],"spec":null,"steps":[{"computeResources":{},"env":[{"name":"PIPELINERUN_NAME","value":"$(params.pipelinerun-name)"},{"name":"CLONE_STATUS","value":"$(params.clone-status)"},{"name":"BUILD_STATUS","value":"$(params.build-status)"},{"name":"SONAR_STATUS","value":"$(params.sonarqube-scan-status)"},{"name":"QUALITY_STATUS","value":"$(params.quality-gate-status)"},{"name":"DOCKER_STATUS","value":"$(params.docker-build-status)"},{"name":"TRIVY_STATUS","value":"$(params.trivy-scan-status)"},{"name":"COSIGN_STATUS","value":"$(params.cosign-sign-status)"},{"name":"DEPLOY_STATUS","value":"$(params.deploy-status)"},{"name":"DETECTION_STATUS","value":"$(params.detection-status)"}],"image":"python:3.11-slim","name":"send-notification","script":"#!/usr/bin/env python3\n\nimport smtplib\n\nimport os\n\nimport subprocess\n\nimport urllib.request\n\nfrom email.mime.multipart import MIMEMultipart\n\nfrom email.mime.text import MIMEText\n\nfrom email.mime.base import MIMEBase\n\nfrom email import encoders\n\nfrom datetime import datetime\n\n\n\n# Install reportlab for PDF\n\nsubprocess.run(['pip', 'install', 'reportlab', '-q'], capture_output=True)\n\n\n\nfrom reportlab.lib.pagesizes import A4\n\nfrom reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle\n\nfrom reportlab.lib.units import cm\n\nfrom reportlab.lib import colors\n\nfrom reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable\n\nfrom reportlab.lib.enums import TA_LEFT, TA_CENTER\n\n\n\npipelinerun = os.environ.get('PIPELINERUN_NAME', 'unknown')\n\nstages = [\n\n    ('Clone',                        os.environ.get('CLONE_STATUS', 'Unknown')),\n\n    ('Detection \u0026 Recommendation',   os.environ.get('DETECTION_STATUS', 'Unknown')),\n\n    ('Build',                        os.environ.get('BUILD_STATUS', 'Unknown')),\n\n    ('SonarQube',                    os.environ.get('SONAR_STATUS', 'Unknown')),\n\n    ('Quality Gate',                 os.environ.get('QUALITY_STATUS', 'Unknown')),\n\n    ('Docker Build',                 os.environ.get('DOCKER_STATUS', 'Unknown')),\n\n    ('Trivy Scan',                   os.environ.get('TRIVY_STATUS', 'Unknown')),\n\n    ('Cosign Sign',                  os.environ.get('COSIGN_STATUS', 'Unknown')),\n\n    ('Deploy',                       os.environ.get('DEPLOY_STATUS', 'Unknown')),\n\n]\n\n\n\noverall_success = all(s in ['Succeeded', 'Unknown', 'Skipped'] for _, s in stages)\n\nfailed_stage = next(((n, s) for n, s in stages if s == 'Failed'), None)\n\ndetection_failed = os.environ.get('DETECTION_STATUS', 'Unknown') == 'Failed'\n\nconsole_url = f'https://console-openshift-console.apps.sno.okd.local/k8s/ns/blog-app/tekton.dev~v1~PipelineRun/{pipelinerun}'\n\napp_url = 'http://blog-api-blog-app.apps.sno.okd.local/'\n\ntimestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')\n\n\n\n# Check app status\n\napp_status = 'Unknown'\n\ntry:\n\n    req = urllib.request.urlopen(app_url, timeout=5)\n\n    app_status = 'Online' if req.status == 200 else 'Degraded'\n\nexcept:\n\n    app_status = 'Unreachable'\n\n\n\n# Read scan results from JSON file\n\nimport os\n\nimport json as _json\n\n\n\nscan_results = ''\n\nissues_count = 0\n\nfindings = []\n\n\n\nprint('Workspace path: /workspace/source')\n\nprint('Files:', os.listdir('/workspace/source') if os.path.exists('/workspace/source') else 'NOT FOUND')\n\n\n\ntry:\n\n    with open('/workspace/source/scan-results.json', 'r') as f:\n\n        scan_data = _json.load(f)\n\n    issues_count = scan_data.get('issues_count', 0)\n\n    findings = scan_data.get('findings', [])\n\n    scan_results = scan_data.get('raw_output', '')\n\n    print(f'Loaded {len(findings)} findings from JSON')\n\nexcept Exception as e:\n\n    print(f'JSON read failed: {e}')\n\n    try:\n\n        with open('/workspace/source/scan-results.txt', 'r') as f:\n\n            scan_results = f.read()\n\n        print('Using txt fallback')\n\n    except Exception as e2:\n\n        print(f'TXT read failed: {e2}')\n\n        scan_results = 'No scan results available'\n\n\n\n\n\n# ── GENERATE PDF ──────────────────────────────────────────────────────────────\n\npdf_path = '/tmp/security-report.pdf'\n\n\n\ntry:\n\n    doc = SimpleDocTemplate(\n\n        pdf_path,\n\n        pagesize=A4,\n\n        rightMargin=2*cm,\n\n        leftMargin=2*cm,\n\n        topMargin=2*cm,\n\n        bottomMargin=2*cm\n\n    )\n\n\n\n    styles = getSampleStyleSheet()\n\n    story = []\n\n\n\n    # Colors\n\n    BLUE    = colors.HexColor('#0066cc')\n\n    RED     = colors.HexColor('#c9190b')\n\n    GREEN   = colors.HexColor('#3e8635')\n\n    ORANGE  = colors.HexColor('#f5a623')\n\n    GRAY    = colors.HexColor('#6a6e73')\n\n    LIGHT   = colors.HexColor('#f5f5f5')\n\n\n\n    # Styles\n\n    title_style = ParagraphStyle('title',\n\n        fontSize=20, fontName='Helvetica-Bold',\n\n        textColor=BLUE, spaceAfter=4, alignment=TA_CENTER)\n\n\n\n    sub_style = ParagraphStyle('sub',\n\n        fontSize=11, fontName='Helvetica',\n\n        textColor=GRAY, spaceAfter=2, alignment=TA_CENTER)\n\n\n\n    section_style = ParagraphStyle('section',\n\n        fontSize=13, fontName='Helvetica-Bold',\n\n        textColor=BLUE, spaceBefore=14, spaceAfter=6)\n\n\n\n    body_style = ParagraphStyle('body',\n\n        fontSize=10, fontName='Helvetica',\n\n        textColor=colors.black, spaceAfter=4)\n\n\n\n    code_style = ParagraphStyle('code',\n\n        fontSize=9, fontName='Courier',\n\n        textColor=colors.HexColor('#333333'),\n\n        backColor=colors.HexColor('#f5f5f5'),\n\n        spaceAfter=4, leftIndent=10)\n\n\n\n    rec_style = ParagraphStyle('rec',\n\n        fontSize=9, fontName='Helvetica-Oblique',\n\n        textColor=colors.HexColor('#3c3c3c'),\n\n        leftIndent=10, spaceAfter=6)\n\n\n\n    # Header\n\n    story.append(Paragraph('Detection \u0026 Recommendation Model', title_style))\n\n    story.append(Paragraph('Security Report — Ansible Playbooks', sub_style))\n\n    story.append(Spacer(1, 0.3*cm))\n\n    story.append(HRFlowable(width='100%', thickness=2, color=BLUE))\n\n    story.append(Spacer(1, 0.3*cm))\n\n\n\n    # Meta info table\n\n    status_color = GREEN if overall_success else RED\n\n    status_text  = 'PASSED' if overall_success else f'BLOCKED — {issues_count} issue(s) found'\n\n\n\n    meta = [\n\n        ['Pipeline Run', pipelinerun],\n\n        ['Date',         timestamp],\n\n        ['Status',       status_text],\n\n        ['Total Issues', str(issues_count)],\n\n    ]\n\n    meta_table = Table(meta, colWidths=[4*cm, 13*cm])\n\n    meta_table.setStyle(TableStyle([\n\n        ('FONTNAME',  (0,0), (0,-1), 'Helvetica-Bold'),\n\n        ('FONTNAME',  (1,0), (1,-1), 'Helvetica'),\n\n        ('FONTSIZE',  (0,0), (-1,-1), 10),\n\n        ('TEXTCOLOR', (0,0), (0,-1), GRAY),\n\n        ('TEXTCOLOR', (1,2), (1,2),  status_color),\n\n        ('FONTNAME',  (1,2), (1,2),  'Helvetica-Bold'),\n\n        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.white, LIGHT]),\n\n        ('TOPPADDING',    (0,0), (-1,-1), 5),\n\n        ('BOTTOMPADDING', (0,0), (-1,-1), 5),\n\n        ('LEFTPADDING',   (0,0), (-1,-1), 8),\n\n    ]))\n\n    story.append(meta_table)\n\n    story.append(Spacer(1, 0.4*cm))\n\n\n\n    # Pipeline stages table\n\n    story.append(Paragraph('Pipeline Stage Results', section_style))\n\n    stage_data = [['Stage', 'Status']]\n\n    for name, status in stages:\n\n        stage_data.append([name, status])\n\n\n\n    stage_table = Table(stage_data, colWidths=[9*cm, 8*cm])\n\n    stage_styles = [\n\n        ('FONTNAME',     (0,0), (-1,0),  'Helvetica-Bold'),\n\n        ('FONTSIZE',     (0,0), (-1,-1), 10),\n\n        ('BACKGROUND',   (0,0), (-1,0),  LIGHT),\n\n        ('TEXTCOLOR',    (0,0), (-1,0),  GRAY),\n\n        ('TOPPADDING',   (0,0), (-1,-1), 6),\n\n        ('BOTTOMPADDING',(0,0), (-1,-1), 6),\n\n        ('LEFTPADDING',  (0,0), (-1,-1), 8),\n\n        ('GRID',         (0,0), (-1,-1), 0.5, colors.HexColor('#e0e0e0')),\n\n    ]\n\n    for i, (name, status) in enumerate(stages, 1):\n\n        c = GREEN if status == 'Succeeded' else RED if status == 'Failed' else GRAY\n\n        stage_styles.append(('TEXTCOLOR', (1,i), (1,i), c))\n\n        stage_styles.append(('FONTNAME',  (1,i), (1,i), 'Helvetica-Bold'))\n\n\n\n    stage_table.setStyle(TableStyle(stage_styles))\n\n    story.append(stage_table)\n\n    story.append(Spacer(1, 0.4*cm))\n\n\n\n    # Findings\n\n    if findings:\n\n        story.append(HRFlowable(width='100%', thickness=1, color=RED))\n\n        story.append(Paragraph(f'Security Findings — {len(findings)} Issue(s) Detected', section_style))\n\n\n\n        for i, f in enumerate(findings, 1):\n\n            conf = int(f['confidence'])\n\n            badge = RED if conf \u003e= 90 else ORANGE if conf \u003e= 80 else GRAY\n\n            bg    = colors.HexColor('#fff5f5') if conf \u003e= 90 else colors.HexColor('#fffbf0') if conf \u003e= 80 else colors.white\n\n\n\n            # Issue header\n\n            issue_header = Table(\n\n                [[f'Issue #{i}', f'{f[\"confidence\"]}% confidence']],\n\n                colWidths=[14*cm, 3*cm]\n\n            )\n\n            issue_header.setStyle(TableStyle([\n\n                ('BACKGROUND',   (0,0), (-1,-1), bg),\n\n                ('FONTNAME',     (0,0), (0,0),   'Helvetica-Bold'),\n\n                ('FONTNAME',     (1,0), (1,0),   'Helvetica-Bold'),\n\n                ('FONTSIZE',     (0,0), (-1,-1), 10),\n\n                ('TEXTCOLOR',    (1,0), (1,0),   badge),\n\n                ('TOPPADDING',   (0,0), (-1,-1), 6),\n\n                ('BOTTOMPADDING',(0,0), (-1,-1), 6),\n\n                ('LEFTPADDING',  (0,0), (-1,-1), 8),\n\n                ('LINEBELOW',    (0,0), (-1,-1), 1, badge),\n\n            ]))\n\n            story.append(issue_header)\n\n\n\n            # Issue details\n\n            details = [\n\n                ['File', f['file']],\n\n                ['Type', f['type']],\n\n            ]\n\n            detail_table = Table(details, colWidths=[3*cm, 14*cm])\n\n            detail_table.setStyle(TableStyle([\n\n                ('FONTNAME',     (0,0), (0,-1), 'Helvetica-Bold'),\n\n                ('FONTNAME',     (1,0), (1,-1), 'Helvetica'),\n\n                ('FONTSIZE',     (0,0), (-1,-1), 9),\n\n                ('TEXTCOLOR',    (0,0), (0,-1), GRAY),\n\n                ('TOPPADDING',   (0,0), (-1,-1), 4),\n\n                ('BOTTOMPADDING',(0,0), (-1,-1), 4),\n\n                ('LEFTPADDING',  (0,0), (-1,-1), 8),\n\n                ('BACKGROUND',   (0,0), (-1,-1), colors.white),\n\n            ]))\n\n            story.append(detail_table)\n\n\n\n            # Code line\n\n            story.append(Paragraph(f'\u003cb\u003eCode:\u003c/b\u003e', body_style))\n\n            story.append(Paragraph(f['line'][:120], code_style))\n\n\n\n            # Recommendation\n\n            story.append(Paragraph(f'\u003cb\u003eRecommendation:\u003c/b\u003e', body_style))\n\n            story.append(Paragraph(f['recommendation'], rec_style))\n\n            story.append(Spacer(1, 0.2*cm))\n\n\n\n        # Summary\n\n        story.append(HRFlowable(width='100%', thickness=1, color=RED))\n\n        story.append(Spacer(1, 0.3*cm))\n\n        story.append(Paragraph(\n\n            f'Total: {issues_count} issue(s) found. Fix all issues above and push again to unblock the pipeline.',\n\n            ParagraphStyle('summary', fontSize=10, fontName='Helvetica-Bold',\n\n                          textColor=RED, alignment=TA_CENTER)\n\n        ))\n\n    else:\n\n        story.append(Paragraph('No security issues detected above the confidence threshold.', body_style))\n\n\n\n    # Footer\n\n    story.append(Spacer(1, 0.5*cm))\n\n    story.append(HRFlowable(width='100%', thickness=1, color=LIGHT))\n\n    story.append(Paragraph(\n\n        'Linsoft DevSecOps Platform • OpenShift OKD 4.20 SNO • Detection \u0026 Recommendation Model',\n\n        ParagraphStyle('footer', fontSize=8, textColor=GRAY, alignment=TA_CENTER)\n\n    ))\n\n\n\n    doc.build(story)\n\n    print(f'PDF report generated: {pdf_path}')\n\n    pdf_generated = True\n\n\n\nexcept Exception as e:\n\n    print(f'PDF generation error: {e}')\n\n    pdf_generated = False\n\n\n\n# ── HTML EMAIL ────────────────────────────────────────────────────────────────\n\ndef icon(s): return '\u0026#10003;' if s=='Succeeded' else ('\u0026#10007;' if s=='Failed' else '\u0026#8226;')\n\ndef color(s): return '#3e8635' if s=='Succeeded' else ('#c9190b' if s=='Failed' else '#6a6e73')\n\n\n\nstages_rows = ''.join(\n\n    f'\u003ctr\u003e\u003ctd style=\"padding:6px 12px;font-size:13px;color:#151515;border-bottom:1px solid #f5f5f5\"\u003e{n}\u003c/td\u003e'\n\n    f'\u003ctd style=\"padding:6px 12px;font-weight:700;color:{color(s)};border-bottom:1px solid #f5f5f5\"\u003e{icon(s)} {s}\u003c/td\u003e\u003c/tr\u003e'\n\n    for n, s in stages\n\n)\n\n\n\nfindings_summary = ''\n\nif findings and detection_failed:\n\n    rows = ''\n\n    for i, f in enumerate(findings[:5], 1):\n\n        conf = int(f['confidence'])\n\n        badge_color = '#c9190b' if conf \u003e= 90 else '#f5a623' if conf \u003e= 80 else '#6a6e73'\n\n        rows += f'''\n\n        \u003ctr\u003e\n\n          \u003ctd style=\"padding:6px 10px;font-size:12px;font-weight:700;color:{badge_color}\"\u003e{f[\"confidence\"]}%\u003c/td\u003e\n\n          \u003ctd style=\"padding:6px 10px;font-size:11px;font-family:monospace;color:#151515\"\u003e{f[\"file\"]}\u003c/td\u003e\n\n          \u003ctd style=\"padding:6px 10px;font-size:11px;color:#6a6e73\"\u003e{f[\"type\"]}\u003c/td\u003e\n\n        \u003c/tr\u003e'''\n\n\n\n    more = f'\u003cp style=\"font-size:12px;color:#6a6e73;margin:8px 0 0\"\u003e...and {len(findings)-5} more issues in the attached PDF report.\u003c/p\u003e' if len(findings) \u003e 5 else ''\n\n\n\n    findings_summary = f'''\n\n    \u003cp style=\"font-size:12px;font-weight:700;color:#6a6e73;text-transform:uppercase;margin:20px 0 8px\"\u003e\n\n      Top Findings (see PDF for all {len(findings)})\n\n    \u003c/p\u003e\n\n    \u003ctable style=\"width:100%;border-collapse:collapse;border:1px solid #e0e0e0;margin-bottom:8px\"\u003e\n\n      \u003ctr style=\"background:#f5f5f5\"\u003e\n\n        \u003cth style=\"padding:6px 10px;text-align:left;font-size:11px;color:#6a6e73;width:80px\"\u003eConfidence\u003c/th\u003e\n\n        \u003cth style=\"padding:6px 10px;text-align:left;font-size:11px;color:#6a6e73\"\u003eFile:Line\u003c/th\u003e\n\n        \u003cth style=\"padding:6px 10px;text-align:left;font-size:11px;color:#6a6e73\"\u003eType\u003c/th\u003e\n\n      \u003c/tr\u003e\n\n      {rows}\n\n    \u003c/table\u003e\n\n    {more}\n\n    \u003cp style=\"font-size:12px;color:#6a6e73;margin:12px 0 0\"\u003e\n\n      \u0026#128196; \u003cb\u003eSee attached PDF\u003c/b\u003e for all findings with complete recommendations.\n\n    \u003c/p\u003e'''\n\n\n\nif overall_success:\n\n    bar = '#3e8635'\n\n    flag = '\u0026#10003; PIPELINE SUCCEEDED - APPLICATION DEPLOYED'\n\n    subject = f'[DEPLOYED] {pipelinerun} | Linsoft DevSecOps'\n\n    main_box = f'''\n\n    \u003cdiv style=\"background:#f0fff0;border:1px solid #3e8635;border-radius:6px;padding:16px;margin:20px 0\"\u003e\n\n      \u003cp style=\"color:#3e8635;font-weight:700;margin:0 0 8px\"\u003e\u0026#127881; All security gates passed\u003c/p\u003e\n\n      \u003ctable style=\"width:100%;border-collapse:collapse;margin-bottom:12px\"\u003e\n\n        \u003ctr\u003e\u003ctd style=\"padding:6px;color:#6a6e73;font-size:13px\"\u003eApp Status\u003c/td\u003e\n\n            \u003ctd style=\"padding:6px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; {app_status}\u003c/td\u003e\u003c/tr\u003e\n\n        \u003ctr\u003e\u003ctd style=\"padding:6px;color:#6a6e73;font-size:13px\"\u003eArgoCD\u003c/td\u003e\n\n            \u003ctd style=\"padding:6px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Synced + Healthy\u003c/td\u003e\u003c/tr\u003e\n\n        \u003ctr\u003e\u003ctd style=\"padding:6px;color:#6a6e73;font-size:13px\"\u003eApp URL\u003c/td\u003e\n\n            \u003ctd style=\"padding:6px;font-size:13px\"\u003e\u003ca href=\"{app_url}\"\u003e{app_url}\u003c/a\u003e\u003c/td\u003e\u003c/tr\u003e\n\n      \u003c/table\u003e\n\n      \u003ca href=\"{app_url}\" style=\"display:inline-block;background:#3e8635;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;margin-right:8px\"\u003e\u0026#127760; Open Application\u003c/a\u003e\n\n      \u003ca href=\"{console_url}\" style=\"display:inline-block;background:#0066cc;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600\"\u003e\u0026#128269; View Pipeline\u003c/a\u003e\n\n    \u003c/div\u003e'''\n\nelse:\n\n    bar = '#c9190b'\n\n    flag = f'\u0026#128680; PIPELINE BLOCKED — {issues_count} Security Issue(s) Detected'\n\n    subject = f'[BLOCKED] {pipelinerun} | {issues_count} Security Issue(s) | Linsoft DevSecOps'\n\n    fn = failed_stage[0] if failed_stage else 'Unknown'\n\n    done = ', '.join(n for n, s in stages if s == 'Succeeded') or 'None'\n\n    left = ', '.join(n for n, s in stages if s not in ['Succeeded', 'Failed']) or 'None'\n\n    main_box = f'''\n\n    \u003cdiv style=\"background:#fff5f5;border:1px solid #c9190b;border-radius:6px;padding:16px;margin:20px 0\"\u003e\n\n      \u003cp style=\"color:#c9190b;font-weight:700;margin:0 0 8px\"\u003e\u0026#128204; Pipeline blocked at: {fn}\u003c/p\u003e\n\n      \u003cp style=\"font-size:13px;color:#3c3c3c;margin:0 0 10px\"\u003e\n\n        \u003cb\u003eCompleted:\u003c/b\u003e {done}\u003cbr\u003e\n\n        \u003cb\u003ePending:\u003c/b\u003e {left}\n\n      \u003c/p\u003e\n\n      \u003ca href=\"{console_url}\" style=\"display:inline-block;background:#c9190b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600\"\u003e\u0026#128269; View Pipeline Logs\u003c/a\u003e\n\n    \u003c/div\u003e'''\n\n\n\nhtml = f'''\u003c!DOCTYPE html\u003e\u003chtml\u003e\u003chead\u003e\u003cmeta charset=\"UTF-8\"\u003e\u003c/head\u003e\n\n\u003cbody style=\"margin:0;padding:0;background:#f0f0f0;font-family:Arial,sans-serif\"\u003e\n\n\u003cdiv style=\"max-width:700px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #d2d2d2\"\u003e\n\n  \u003cdiv style=\"background:#0066cc;padding:20px 28px\"\u003e\n\n    \u003cp style=\"color:#fff;font-size:18px;font-weight:700;margin:0\"\u003e\u0026#9881; OpenShift OKD - Pipeline Security Report\u003c/p\u003e\n\n    \u003cp style=\"color:#b3d4ff;font-size:12px;margin:4px 0 0\"\u003eLinsoft DevSecOps Platform \u0026bull; {timestamp}\u003c/p\u003e\n\n  \u003c/div\u003e\n\n  \u003cdiv style=\"background:{bar};padding:10px 28px\"\u003e\n\n    \u003cspan style=\"color:#fff;font-size:13px;font-weight:600\"\u003e{flag}\u003c/span\u003e\n\n  \u003c/div\u003e\n\n  \u003cdiv style=\"padding:24px 28px\"\u003e\n\n    \u003cp style=\"font-size:18px;font-weight:700;color:#151515;margin:0 0 4px\"\u003e{pipelinerun}\u003c/p\u003e\n\n    \u003cp style=\"font-size:14px;color:#6a6e73;margin:0 0 20px\"\u003ePipeline execution security report\u003c/p\u003e\n\n    \u003cp style=\"font-size:12px;font-weight:700;color:#6a6e73;text-transform:uppercase;margin:0 0 8px\"\u003eStage Results\u003c/p\u003e\n\n    \u003ctable style=\"width:100%;border-collapse:collapse;margin-bottom:20px\"\u003e\n\n      \u003ctr style=\"background:#f5f5f5\"\u003e\n\n        \u003cth style=\"padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73\"\u003eStage\u003c/th\u003e\n\n        \u003cth style=\"padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73\"\u003eStatus\u003c/th\u003e\n\n      \u003c/tr\u003e\n\n      {stages_rows}\n\n    \u003c/table\u003e\n\n    {main_box}\n\n    {findings_summary}\n\n  \u003c/div\u003e\n\n  \u003cdiv style=\"background:#f5f5f5;padding:14px 28px;border-top:1px solid #e0e0e0\"\u003e\n\n    \u003cp style=\"font-size:11px;color:#6a6e73;margin:0\"\u003e\n\n      Linsoft DevSecOps \u0026bull; OpenShift OKD 4.20 SNO \u0026bull; Detection \u0026 Recommendation Model\n\n    \u003c/p\u003e\n\n  \u003c/div\u003e\n\n\u003c/div\u003e\n\n\u003c/body\u003e\u003c/html\u003e'''\n\n\n\n# ── SEND EMAIL ────────────────────────────────────────────────────────────────\n\nmsg = MIMEMultipart('mixed')\n\nmsg['Subject'] = subject\n\nmsg['From'] = 'yefa.attia@esprit.tn'\n\nmsg['To'] = 'yefa.attia@esprit.tn'\n\n\n\nmsg_body = MIMEMultipart('alternative')\n\nmsg_body.attach(MIMEText(html, 'html'))\n\nmsg.attach(msg_body)\n\n\n\n# Attach PDF report\n\nif detection_failed and pdf_generated:\n\n    try:\n\n        with open(pdf_path, 'rb') as f:\n\n            pdf_data = f.read()\n\n        attachment = MIMEBase('application', 'pdf')\n\n        attachment.set_payload(pdf_data)\n\n        encoders.encode_base64(attachment)\n\n        attachment.add_header('Content-Disposition', 'attachment',\n\n                             filename=f'security-report-{pipelinerun}.pdf')\n\n        msg.attach(attachment)\n\n        print('PDF attached to email')\n\n    except Exception as e:\n\n        print(f'Could not attach PDF: {e}')\n\n\n\ntry:\n\n    s = smtplib.SMTP('smtp.gmail.com', 587)\n\n    s.ehlo()\n\n    s.starttls()\n\n    s.login('yefa.attia@esprit.tn', 'xgtk sims dpby ulua')\n\n    s.sendmail('yefa.attia@esprit.tn', 'yefa.attia@esprit.tn', msg.as_string())\n\n    s.quit()\n\n    print('Email sent with PDF security report!')\n\nexcept Exception as e:\n\n    print(f'Email error: {e}')\n\n"}]},"workspaces":[{"name":"source","workspace":"source"}]}],"params":[{"default":"https://github.com/20eva/pfe-linsoft.git","name":"git-url","type":"string"},{"default":"sample-app","name":"git-revision","type":"string"},{"default":"http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000","name":"sonar-url","type":"string"},{"default":"sqa_b049ec82c7dec33a66637f4c0ae3d02770baa4da","name":"sonar-token","type":"string"},{"default":"image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api","name":"image-url","type":"string"}],"tasks":[{"name":"clone","params":[{"name":"git-url","value":"$(params.git-url)"},{"name":"git-revision","value":"$(params.git-revision)"}],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["set -e\nrm -rf /workspace/source/app 2\u003e/dev/null || true\ngit clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app\necho Clone_SUCCESS\n"],"command":["/bin/sh","-c"],"computeResources":{},"image":"alpine/git","name":"clone"}],"workspaces":[{"mountPath":"/workspace/source","name":"output"}]},"workspaces":[{"name":"output","workspace":"source"}]},{"name":"build","runAfter":["detection-recommendation"],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["set -e\n\ncd /workspace/source/app\n\nrm -rf node_modules 2\u003e/dev/null || true\n\nnpm install --legacy-peer-deps\n\n./node_modules/.bin/nx build api --configuration=production\n\necho BUILD_SUCCESS"],"command":["/bin/sh","-c"],"computeResources":{},"image":"node:18-alpine","name":"npm-build"}],"workspaces":[{"mountPath":"/workspace/source","name":"source"}]},"workspaces":[{"name":"source","workspace":"source"}]},{"name":"sonarqube-scan","params":[{"name":"sonar-url","value":"$(params.sonar-url)"},{"name":"sonar-token","value":"$(params.sonar-token)"}],"runAfter":["build"],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["set -e\n\nmkdir -p /tmp/sonar-work\n\nchmod 777 /tmp/sonar-work\n\ncd /tmp\n\nsonar-scanner"],"command":["/bin/sh","-c"],"computeResources":{},"env":[{"name":"SONAR_TOKEN","value":"sqa_4cf6d79cc5d38684e3a61dd017f231b69034f6e0"},{"name":"SONAR_HOST_URL","value":"http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000"},{"name":"SONAR_SCANNER_OPTS","value":"-Dsonar.projectKey=nodejs-blog-api -Dsonar.projectName=nodejs-blog-api -Dsonar.projectBaseDir=/workspace/source/app -Dsonar.sources=src -Dsonar.working.directory=/tmp/sonar-work -Dsonar.scm.disabled=true"}],"image":"sonarsource/sonar-scanner-cli:11","name":"scan"}],"workspaces":[{"mountPath":"/workspace/source","name":"source"}]},"workspaces":[{"name":"source","workspace":"source"}]},{"name":"quality-gate","params":[{"name":"sonar-url","value":"$(params.sonar-url)"},{"name":"sonar-token","value":"$(params.sonar-token)"},{"name":"project-key","value":"nodejs-blog-api"}],"runAfter":["sonarqube-scan"],"taskRef":{"kind":"Task","name":"quality-gate-check"}},{"name":"docker-build","params":[{"name":"image-url","value":"$(params.image-url)"}],"runAfter":["quality-gate"],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["set -e\n\ncd /workspace/source/app\n\nTOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\n\nbuildah login --tls-verify=false -u serviceaccount -p $TOKEN image-registry.openshift-image-registry.svc.cluster.local:5000\n\nbuildah build --tls-verify=false -t image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api:latest .\n\nbuildah push --tls-verify=false --creds serviceaccount:$TOKEN image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api:latest\n\necho DOCKER_BUILD_SUCCESS"],"command":["/bin/sh","-c"],"computeResources":{},"image":"quay.io/buildah/stable:latest","name":"build-push","securityContext":{"privileged":true}}],"workspaces":[{"mountPath":"/workspace/source","name":"source"}]},"workspaces":[{"name":"source","workspace":"source"}]},{"name":"trivy-scan","params":[{"name":"image-url","value":"$(params.image-url)"}],"runAfter":["docker-build"],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["trivy image \\\n  --insecure \\\n  --exit-code 0 \\\n  --severity HIGH,CRITICAL \\\n  --format table \\\n  $(params.image-url):latest\necho TRIVY_SCAN_COMPLETE\n"],"command":["/bin/sh","-c"],"computeResources":{},"image":"aquasec/trivy:latest","name":"scan"}]}},{"name":"cosign-sign","params":[{"name":"image-url","value":"$(params.image-url)"}],"runAfter":["trivy-scan"],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["COSIGN_PASSWORD=userOcp123 cosign sign \\\n  --key /etc/cosign/cosign.key \\\n  --allow-insecure-registry \\\n  $(params.image-url):latest\necho IMAGE_SIGNED_SUCCESS\n"],"command":["/bin/sh","-c"],"computeResources":{},"image":"bitnami/cosign:latest","name":"sign","volumeMounts":[{"mountPath":"/etc/cosign","name":"cosign-key"}]}],"volumes":[{"name":"cosign-key","secret":{"secretName":"cosign-key-secret"}}]}},{"name":"deploy","runAfter":["request-approval"],"taskSpec":{"metadata":{},"spec":null,"steps":[{"args":["set -e\n\nARGOCD_TOKEN=$(curl -sk -X POST https://argocd-argocd.apps.sno.okd.local/api/v1/session -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"mWE03K2-727glxce\"}' | grep -o '\"token\":\"[^\"]*\"' | cut -d'\"' -f4)\n\necho \"Got ArgoCD token\"\n\ncurl -sk -X POST https://argocd-argocd.apps.sno.okd.local/api/v1/applications/blog-api/sync -H \"Authorization: Bearer $ARGOCD_TOKEN\" -H \"Content-Type: application/json\" -d '{\"prune\":true}'\n\necho DEPLOY_TRIGGERED\n\n"],"command":["/bin/sh","-c"],"computeResources":{},"env":[{"name":"ARGOCD_TOKEN","value":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsImV4cCI6MTc4NjM1OTgwNCwibmJmIjoxNzg2MjczNDA0LCJpYXQiOjE3ODYyNzM0MDQsImp0aSI6ImM1YjRhMGFhLTNkMDAtNDRiNi05ZmI2LTRlYTA4YmM3YWI3OSJ9.qp5pkbb7BYJ_R-Z6YI14RtY-fuEK6jDzw-fw-fyKl8k"}],"image":"alpine/curl:latest","name":"argocd-sync"}]}},{"name":"request-approval","params":[{"name":"pipelinerun-name","value":"$(context.pipelineRun.name)"},{"name":"image-url","value":"$(params.image-url)"}],"runAfter":["cosign-sign"],"taskSpec":{"metadata":{},"params":[{"name":"pipelinerun-name","type":"string"},{"name":"image-url","type":"string"}],"spec":null,"steps":[{"computeResources":{},"env":[{"name":"PIPELINERUN_NAME","value":"$(params.pipelinerun-name)"},{"name":"IMAGE_URL","value":"$(params.image-url)"}],"image":"python:3.11-slim","name":"send-approval-email","script":"#!/usr/bin/env python3\n\nimport smtplib\n\nimport os\n\nimport time\n\nimport uuid\n\nimport urllib.request\n\nimport json\n\nfrom email.mime.multipart import MIMEMultipart\n\nfrom email.mime.text import MIMEText\n\n\n\npipelinerun = os.environ.get('PIPELINERUN_NAME', 'unknown')\n\nimage_url = os.environ.get('IMAGE_URL', 'unknown')\n\n\n\n# Generate unique token\n\ntoken = str(uuid.uuid4())[:8]\n\n\n\n# Approval server URL\n\napproval_host = '192.168.1.6:8888'\n\napprove_url = f'http://{approval_host}/approve?token={token}\u0026action=approve'\n\nreject_url = f'http://{approval_host}/approve?token={token}\u0026action=reject'\n\nstatus_url = f'http://{approval_host}/status?token={token}'\n\nconsole_url = f'https://console-openshift-console.apps.sno.okd.local/k8s/ns/blog-app/tekton.dev~v1~PipelineRun/{pipelinerun}'\n\n\n\nhtml = f'''\u003c!DOCTYPE html\u003e\n\n\u003chtml\u003e\u003chead\u003e\u003cmeta charset=\"UTF-8\"\u003e\u003c/head\u003e\n\n\u003cbody style=\"margin:0;padding:0;background:#f0f0f0;font-family:Arial,sans-serif\"\u003e\n\n\u003cdiv style=\"max-width:600px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #d2d2d2\"\u003e\n\n  \u003cdiv style=\"background:#0066cc;padding:20px 28px\"\u003e\n\n    \u003cp style=\"color:#fff;font-size:18px;font-weight:700;margin:0\"\u003eDeployment Approval Required\u003c/p\u003e\n\n    \u003cp style=\"color:#b3d4ff;font-size:12px;margin:4px 0 0\"\u003eLinsoft DevSecOps Platform\u003c/p\u003e\n\n  \u003c/div\u003e\n\n  \u003cdiv style=\"background:#f5a623;padding:10px 28px\"\u003e\n\n    \u003cspan style=\"color:#fff;font-size:13px;font-weight:600\"\u003e\u0026#9888; WAITING FOR YOUR APPROVAL TO DEPLOY\u003c/span\u003e\n\n  \u003c/div\u003e\n\n  \u003cdiv style=\"padding:24px 28px\"\u003e\n\n    \u003cp style=\"font-size:16px;font-weight:700;color:#151515\"\u003ePipeline: {pipelinerun}\u003c/p\u003e\n\n    \u003cp style=\"font-size:13px;color:#6a6e73;margin:0 0 20px\"\u003eAll 7 security gates passed. The image is ready to deploy. Your approval is required to proceed.\u003c/p\u003e\n\n    \n\n    \u003ctable style=\"width:100%;border-collapse:collapse;margin-bottom:20px\"\u003e\n\n      \u003ctr style=\"background:#f5f5f5\"\u003e\n\n        \u003cth style=\"padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73\"\u003eCheck\u003c/th\u003e\n\n        \u003cth style=\"padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73\"\u003eStatus\u003c/th\u003e\n\n      \u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eClone\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eBuild\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eSonarQube\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eQuality Gate\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eDocker Build\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eTrivy Scan\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eCosign Sign\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#3e8635;font-weight:700\"\u003e\u0026#10003; Passed\u003c/td\u003e\u003c/tr\u003e\n\n      \u003ctr style=\"background:#fff8e1\"\u003e\u003ctd style=\"padding:8px 12px;font-size:13px\"\u003eDeploy\u003c/td\u003e\u003ctd style=\"padding:8px 12px;color:#f5a623;font-weight:700\"\u003e\u0026#9888; Waiting Approval\u003c/td\u003e\u003c/tr\u003e\n\n    \u003c/table\u003e\n\n\n\n    \u003cdiv style=\"background:#f5f5f5;border-radius:6px;padding:14px;margin-bottom:20px\"\u003e\n\n      \u003cp style=\"font-size:13px;font-weight:700;margin:0 0 8px\"\u003eImage Details\u003c/p\u003e\n\n      \u003cp style=\"font-size:12px;color:#6a6e73;margin:0\"\u003eImage: {image_url}\u003c/p\u003e\n\n      \u003cp style=\"font-size:12px;color:#6a6e73;margin:4px 0 0\"\u003eToken: {token}\u003c/p\u003e\n\n    \u003c/div\u003e\n\n\n\n    \u003cdiv style=\"text-align:center;margin:24px 0\"\u003e\n\n      \u003ca href=\"{approve_url}\" style=\"display:inline-block;background:#3e8635;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:16px;margin-right:16px\"\u003e\n\n        \u0026#10003; APPROVE DEPLOYMENT\n\n      \u003c/a\u003e\n\n      \u003ca href=\"{reject_url}\" style=\"display:inline-block;background:#c9190b;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:16px\"\u003e\n\n        \u0026#10007; REJECT\n\n      \u003c/a\u003e\n\n    \u003c/div\u003e\n\n\n\n    \u003cp style=\"font-size:12px;color:#6a6e73;text-align:center\"\u003e\n\n      This approval will expire in 1 hour. \n\n      \u003ca href=\"{console_url}\"\u003eView Pipeline\u003c/a\u003e\n\n    \u003c/p\u003e\n\n  \u003c/div\u003e\n\n  \u003cdiv style=\"background:#f5f5f5;padding:14px 28px;border-top:1px solid #e0e0e0\"\u003e\n\n    \u003cp style=\"font-size:11px;color:#6a6e73;margin:0\"\u003eLinsoft DevSecOps \u0026bull; Pipeline Approval \u0026bull; Do not reply\u003c/p\u003e\n\n  \u003c/div\u003e\n\n\u003c/div\u003e\n\n\u003c/body\u003e\u003c/html\u003e'''\n\n\n\n# Send email\n\nmsg = MIMEMultipart('alternative')\n\nmsg['Subject'] = f'[APPROVAL REQUIRED] Deploy {pipelinerun} | Linsoft DevSecOps'\n\nmsg['From'] = 'yefa.attia@esprit.tn'\n\nmsg['To'] = 'yefa.attia@esprit.tn'\n\nmsg.attach(MIMEText(html, 'html'))\n\n\n\ntry:\n\n    s = smtplib.SMTP('smtp.gmail.com', 587)\n\n    s.ehlo(); s.starttls()\n\n    s.login('yefa.attia@esprit.tn', 'xgtk sims dpby ulua')\n\n    s.sendmail('yefa.attia@esprit.tn', 'yefa.attia@esprit.tn', msg.as_string())\n\n    s.quit()\n\n    print(f'Approval email sent. Token: {token}')\n\nexcept Exception as e:\n\n    print(f'Email error: {e}')\n\n\n\n# Poll for approval (max 1 hour)\n\nprint('Waiting for approval...')\n\ntimeout = 3600\n\ninterval = 30\n\nelapsed = 0\n\n\n\nwhile elapsed \u003c timeout:\n\n    try:\n\n        req = urllib.request.urlopen(status_url, timeout=5)\n\n        result = json.loads(req.read().decode())\n\n        action = result.get('action', 'pending')\n\n        \n\n        if action == 'approve':\n\n            print('APPROVED - proceeding to deployment')\n\n            exit(0)\n\n        elif action == 'reject':\n\n            print('REJECTED - deployment cancelled')\n\n            exit(1)\n\n        else:\n\n            print(f'Still waiting... ({elapsed}s elapsed)')\n\n    except Exception as e:\n\n        print(f'Polling error: {e}')\n\n    \n\n    time.sleep(interval)\n\n    elapsed += interval\n\n\n\nprint('TIMEOUT - no approval received')\n\nexit(1)\n\n"}]}},{"name":"detection-recommendation","params":[{"name":"threshold","value":"0.85"}],"runAfter":["clone"],"taskRef":{"kind":"Task","name":"detection-recommendation-scan"},"workspaces":[{"name":"source","workspace":"source"}]}],"workspaces":[{"name":"source"}]}}
+  creationTimestamp: "2026-07-29T08:28:15Z"
+  generation: 68
   name: blog-api-pipeline
   namespace: blog-app
+  resourceVersion: "27205406"
+  uid: c86d68bb-86ad-4c8e-a568-22c3ffc47e3b
 spec:
+  finally:
+  - name: notify-pipeline-status
+    params:
+    - name: pipelinerun-name
+      value: $(context.pipelineRun.name)
+    - name: clone-status
+      value: $(tasks.clone.status)
+    - name: build-status
+      value: $(tasks.build.status)
+    - name: sonarqube-scan-status
+      value: $(tasks.sonarqube-scan.status)
+    - name: quality-gate-status
+      value: $(tasks.quality-gate.status)
+    - name: docker-build-status
+      value: $(tasks.docker-build.status)
+    - name: trivy-scan-status
+      value: $(tasks.trivy-scan.status)
+    - name: cosign-sign-status
+      value: $(tasks.cosign-sign.status)
+    - name: deploy-status
+      value: $(tasks.deploy.status)
+    - name: detection-status
+      value: $(tasks.detection-recommendation.status)
+    taskSpec:
+      metadata: {}
+      params:
+      - name: pipelinerun-name
+        type: string
+      - name: clone-status
+        type: string
+      - name: build-status
+        type: string
+      - name: sonarqube-scan-status
+        type: string
+      - name: quality-gate-status
+        type: string
+      - name: docker-build-status
+        type: string
+      - name: trivy-scan-status
+        type: string
+      - name: cosign-sign-status
+        type: string
+      - name: deploy-status
+        type: string
+      - default: Unknown
+        name: detection-status
+        type: string
+      spec: null
+      steps:
+      - computeResources: {}
+        env:
+        - name: PIPELINERUN_NAME
+          value: $(params.pipelinerun-name)
+        - name: CLONE_STATUS
+          value: $(params.clone-status)
+        - name: BUILD_STATUS
+          value: $(params.build-status)
+        - name: SONAR_STATUS
+          value: $(params.sonarqube-scan-status)
+        - name: QUALITY_STATUS
+          value: $(params.quality-gate-status)
+        - name: DOCKER_STATUS
+          value: $(params.docker-build-status)
+        - name: TRIVY_STATUS
+          value: $(params.trivy-scan-status)
+        - name: COSIGN_STATUS
+          value: $(params.cosign-sign-status)
+        - name: DEPLOY_STATUS
+          value: $(params.deploy-status)
+        - name: DETECTION_STATUS
+          value: $(params.detection-status)
+        image: python:3.11-slim
+        name: send-notification
+        script: |+
+          #!/usr/bin/env python3
+
+          import smtplib
+
+          import os
+
+          import subprocess
+
+          import urllib.request
+
+          from email.mime.multipart import MIMEMultipart
+
+          from email.mime.text import MIMEText
+
+          from email.mime.base import MIMEBase
+
+          from email import encoders
+
+          from datetime import datetime
+
+
+
+          # Install reportlab for PDF
+
+          subprocess.run(['pip', 'install', 'reportlab', '-q'], capture_output=True)
+
+
+
+          from reportlab.lib.pagesizes import A4
+
+          from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+          from reportlab.lib.units import cm
+
+          from reportlab.lib import colors
+
+          from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+
+          from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+
+
+          pipelinerun = os.environ.get('PIPELINERUN_NAME', 'unknown')
+
+          stages = [
+
+              ('Clone',                        os.environ.get('CLONE_STATUS', 'Unknown')),
+
+              ('Detection & Recommendation',   os.environ.get('DETECTION_STATUS', 'Unknown')),
+
+              ('Build',                        os.environ.get('BUILD_STATUS', 'Unknown')),
+
+              ('SonarQube',                    os.environ.get('SONAR_STATUS', 'Unknown')),
+
+              ('Quality Gate',                 os.environ.get('QUALITY_STATUS', 'Unknown')),
+
+              ('Docker Build',                 os.environ.get('DOCKER_STATUS', 'Unknown')),
+
+              ('Trivy Scan',                   os.environ.get('TRIVY_STATUS', 'Unknown')),
+
+              ('Cosign Sign',                  os.environ.get('COSIGN_STATUS', 'Unknown')),
+
+              ('Deploy',                       os.environ.get('DEPLOY_STATUS', 'Unknown')),
+
+          ]
+
+
+
+          overall_success = all(s in ['Succeeded', 'Unknown', 'Skipped'] for _, s in stages)
+
+          failed_stage = next(((n, s) for n, s in stages if s == 'Failed'), None)
+
+          detection_failed = os.environ.get('DETECTION_STATUS', 'Unknown') == 'Failed'
+
+          console_url = f'https://console-openshift-console.apps.sno.okd.local/k8s/ns/blog-app/tekton.dev~v1~PipelineRun/{pipelinerun}'
+
+          app_url = 'http://blog-api-blog-app.apps.sno.okd.local/'
+
+          timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+
+          # Check app status
+
+          app_status = 'Unknown'
+
+          try:
+
+              req = urllib.request.urlopen(app_url, timeout=5)
+
+              app_status = 'Online' if req.status == 200 else 'Degraded'
+
+          except:
+
+              app_status = 'Unreachable'
+
+
+
+          # Read scan results from JSON file
+
+          import os
+
+          import json as _json
+
+
+
+          scan_results = ''
+
+          issues_count = 0
+
+          findings = []
+
+
+
+          print('Workspace path: /workspace/source')
+
+          print('Files:', os.listdir('/workspace/source') if os.path.exists('/workspace/source') else 'NOT FOUND')
+
+
+
+          try:
+
+              with open('/workspace/source/scan-results.json', 'r') as f:
+
+                  scan_data = _json.load(f)
+
+              issues_count = scan_data.get('issues_count', 0)
+
+              findings = scan_data.get('findings', [])
+
+              scan_results = scan_data.get('raw_output', '')
+
+              print(f'Loaded {len(findings)} findings from JSON')
+
+          except Exception as e:
+
+              print(f'JSON read failed: {e}')
+
+              try:
+
+                  with open('/workspace/source/scan-results.txt', 'r') as f:
+
+                      scan_results = f.read()
+
+                  print('Using txt fallback')
+
+              except Exception as e2:
+
+                  print(f'TXT read failed: {e2}')
+
+                  scan_results = 'No scan results available'
+
+
+
+
+
+          # ── GENERATE PDF ──────────────────────────────────────────────────────────────
+
+          pdf_path = '/tmp/security-report.pdf'
+
+
+
+          try:
+
+              doc = SimpleDocTemplate(
+
+                  pdf_path,
+
+                  pagesize=A4,
+
+                  rightMargin=2*cm,
+
+                  leftMargin=2*cm,
+
+                  topMargin=2*cm,
+
+                  bottomMargin=2*cm
+
+              )
+
+
+
+              styles = getSampleStyleSheet()
+
+              story = []
+
+
+
+              # Colors
+
+              BLUE    = colors.HexColor('#0066cc')
+
+              RED     = colors.HexColor('#c9190b')
+
+              GREEN   = colors.HexColor('#3e8635')
+
+              ORANGE  = colors.HexColor('#f5a623')
+
+              GRAY    = colors.HexColor('#6a6e73')
+
+              LIGHT   = colors.HexColor('#f5f5f5')
+
+
+
+              # Styles
+
+              title_style = ParagraphStyle('title',
+
+                  fontSize=20, fontName='Helvetica-Bold',
+
+                  textColor=BLUE, spaceAfter=4, alignment=TA_CENTER)
+
+
+
+              sub_style = ParagraphStyle('sub',
+
+                  fontSize=11, fontName='Helvetica',
+
+                  textColor=GRAY, spaceAfter=2, alignment=TA_CENTER)
+
+
+
+              section_style = ParagraphStyle('section',
+
+                  fontSize=13, fontName='Helvetica-Bold',
+
+                  textColor=BLUE, spaceBefore=14, spaceAfter=6)
+
+
+
+              body_style = ParagraphStyle('body',
+
+                  fontSize=10, fontName='Helvetica',
+
+                  textColor=colors.black, spaceAfter=4)
+
+
+
+              code_style = ParagraphStyle('code',
+
+                  fontSize=9, fontName='Courier',
+
+                  textColor=colors.HexColor('#333333'),
+
+                  backColor=colors.HexColor('#f5f5f5'),
+
+                  spaceAfter=4, leftIndent=10)
+
+
+
+              rec_style = ParagraphStyle('rec',
+
+                  fontSize=9, fontName='Helvetica-Oblique',
+
+                  textColor=colors.HexColor('#3c3c3c'),
+
+                  leftIndent=10, spaceAfter=6)
+
+
+
+              # Header
+
+              story.append(Paragraph('Detection & Recommendation Model', title_style))
+
+              story.append(Paragraph('Security Report — Ansible Playbooks', sub_style))
+
+              story.append(Spacer(1, 0.3*cm))
+
+              story.append(HRFlowable(width='100%', thickness=2, color=BLUE))
+
+              story.append(Spacer(1, 0.3*cm))
+
+
+
+              # Meta info table
+
+              status_color = GREEN if overall_success else RED
+
+              status_text  = 'PASSED' if overall_success else f'BLOCKED — {issues_count} issue(s) found'
+
+
+
+              meta = [
+
+                  ['Pipeline Run', pipelinerun],
+
+                  ['Date',         timestamp],
+
+                  ['Status',       status_text],
+
+                  ['Total Issues', str(issues_count)],
+
+              ]
+
+              meta_table = Table(meta, colWidths=[4*cm, 13*cm])
+
+              meta_table.setStyle(TableStyle([
+
+                  ('FONTNAME',  (0,0), (0,-1), 'Helvetica-Bold'),
+
+                  ('FONTNAME',  (1,0), (1,-1), 'Helvetica'),
+
+                  ('FONTSIZE',  (0,0), (-1,-1), 10),
+
+                  ('TEXTCOLOR', (0,0), (0,-1), GRAY),
+
+                  ('TEXTCOLOR', (1,2), (1,2),  status_color),
+
+                  ('FONTNAME',  (1,2), (1,2),  'Helvetica-Bold'),
+
+                  ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.white, LIGHT]),
+
+                  ('TOPPADDING',    (0,0), (-1,-1), 5),
+
+                  ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+
+                  ('LEFTPADDING',   (0,0), (-1,-1), 8),
+
+              ]))
+
+              story.append(meta_table)
+
+              story.append(Spacer(1, 0.4*cm))
+
+
+
+              # Pipeline stages table
+
+              story.append(Paragraph('Pipeline Stage Results', section_style))
+
+              stage_data = [['Stage', 'Status']]
+
+              for name, status in stages:
+
+                  stage_data.append([name, status])
+
+
+
+              stage_table = Table(stage_data, colWidths=[9*cm, 8*cm])
+
+              stage_styles = [
+
+                  ('FONTNAME',     (0,0), (-1,0),  'Helvetica-Bold'),
+
+                  ('FONTSIZE',     (0,0), (-1,-1), 10),
+
+                  ('BACKGROUND',   (0,0), (-1,0),  LIGHT),
+
+                  ('TEXTCOLOR',    (0,0), (-1,0),  GRAY),
+
+                  ('TOPPADDING',   (0,0), (-1,-1), 6),
+
+                  ('BOTTOMPADDING',(0,0), (-1,-1), 6),
+
+                  ('LEFTPADDING',  (0,0), (-1,-1), 8),
+
+                  ('GRID',         (0,0), (-1,-1), 0.5, colors.HexColor('#e0e0e0')),
+
+              ]
+
+              for i, (name, status) in enumerate(stages, 1):
+
+                  c = GREEN if status == 'Succeeded' else RED if status == 'Failed' else GRAY
+
+                  stage_styles.append(('TEXTCOLOR', (1,i), (1,i), c))
+
+                  stage_styles.append(('FONTNAME',  (1,i), (1,i), 'Helvetica-Bold'))
+
+
+
+              stage_table.setStyle(TableStyle(stage_styles))
+
+              story.append(stage_table)
+
+              story.append(Spacer(1, 0.4*cm))
+
+
+
+              # Findings
+
+              if findings:
+
+                  story.append(HRFlowable(width='100%', thickness=1, color=RED))
+
+                  story.append(Paragraph(f'Security Findings — {len(findings)} Issue(s) Detected', section_style))
+
+
+
+                  for i, f in enumerate(findings, 1):
+
+                      conf = int(f['confidence'])
+
+                      badge = RED if conf >= 90 else ORANGE if conf >= 80 else GRAY
+
+                      bg    = colors.HexColor('#fff5f5') if conf >= 90 else colors.HexColor('#fffbf0') if conf >= 80 else colors.white
+
+
+
+                      # Issue header
+
+                      issue_header = Table(
+
+                          [[f'Issue #{i}', f'{f["confidence"]}% confidence']],
+
+                          colWidths=[14*cm, 3*cm]
+
+                      )
+
+                      issue_header.setStyle(TableStyle([
+
+                          ('BACKGROUND',   (0,0), (-1,-1), bg),
+
+                          ('FONTNAME',     (0,0), (0,0),   'Helvetica-Bold'),
+
+                          ('FONTNAME',     (1,0), (1,0),   'Helvetica-Bold'),
+
+                          ('FONTSIZE',     (0,0), (-1,-1), 10),
+
+                          ('TEXTCOLOR',    (1,0), (1,0),   badge),
+
+                          ('TOPPADDING',   (0,0), (-1,-1), 6),
+
+                          ('BOTTOMPADDING',(0,0), (-1,-1), 6),
+
+                          ('LEFTPADDING',  (0,0), (-1,-1), 8),
+
+                          ('LINEBELOW',    (0,0), (-1,-1), 1, badge),
+
+                      ]))
+
+                      story.append(issue_header)
+
+
+
+                      # Issue details
+
+                      details = [
+
+                          ['File', f['file']],
+
+                          ['Type', f['type']],
+
+                      ]
+
+                      detail_table = Table(details, colWidths=[3*cm, 14*cm])
+
+                      detail_table.setStyle(TableStyle([
+
+                          ('FONTNAME',     (0,0), (0,-1), 'Helvetica-Bold'),
+
+                          ('FONTNAME',     (1,0), (1,-1), 'Helvetica'),
+
+                          ('FONTSIZE',     (0,0), (-1,-1), 9),
+
+                          ('TEXTCOLOR',    (0,0), (0,-1), GRAY),
+
+                          ('TOPPADDING',   (0,0), (-1,-1), 4),
+
+                          ('BOTTOMPADDING',(0,0), (-1,-1), 4),
+
+                          ('LEFTPADDING',  (0,0), (-1,-1), 8),
+
+                          ('BACKGROUND',   (0,0), (-1,-1), colors.white),
+
+                      ]))
+
+                      story.append(detail_table)
+
+
+
+                      # Code line
+
+                      story.append(Paragraph(f'<b>Code:</b>', body_style))
+
+                      story.append(Paragraph(f['line'][:120], code_style))
+
+
+
+                      # Recommendation
+
+                      story.append(Paragraph(f'<b>Recommendation:</b>', body_style))
+
+                      story.append(Paragraph(f['recommendation'], rec_style))
+
+                      story.append(Spacer(1, 0.2*cm))
+
+
+
+                  # Summary
+
+                  story.append(HRFlowable(width='100%', thickness=1, color=RED))
+
+                  story.append(Spacer(1, 0.3*cm))
+
+                  story.append(Paragraph(
+
+                      f'Total: {issues_count} issue(s) found. Fix all issues above and push again to unblock the pipeline.',
+
+                      ParagraphStyle('summary', fontSize=10, fontName='Helvetica-Bold',
+
+                                    textColor=RED, alignment=TA_CENTER)
+
+                  ))
+
+              else:
+
+                  story.append(Paragraph('No security issues detected above the confidence threshold.', body_style))
+
+
+
+              # Footer
+
+              story.append(Spacer(1, 0.5*cm))
+
+              story.append(HRFlowable(width='100%', thickness=1, color=LIGHT))
+
+              story.append(Paragraph(
+
+                  'Linsoft DevSecOps Platform • OpenShift OKD 4.20 SNO • Detection & Recommendation Model',
+
+                  ParagraphStyle('footer', fontSize=8, textColor=GRAY, alignment=TA_CENTER)
+
+              ))
+
+
+
+              doc.build(story)
+
+              print(f'PDF report generated: {pdf_path}')
+
+              pdf_generated = True
+
+
+
+          except Exception as e:
+
+              print(f'PDF generation error: {e}')
+
+              pdf_generated = False
+
+
+
+          # ── HTML EMAIL ────────────────────────────────────────────────────────────────
+
+          def icon(s): return '&#10003;' if s=='Succeeded' else ('&#10007;' if s=='Failed' else '&#8226;')
+
+          def color(s): return '#3e8635' if s=='Succeeded' else ('#c9190b' if s=='Failed' else '#6a6e73')
+
+
+
+          stages_rows = ''.join(
+
+              f'<tr><td style="padding:6px 12px;font-size:13px;color:#151515;border-bottom:1px solid #f5f5f5">{n}</td>'
+
+              f'<td style="padding:6px 12px;font-weight:700;color:{color(s)};border-bottom:1px solid #f5f5f5">{icon(s)} {s}</td></tr>'
+
+              for n, s in stages
+
+          )
+
+
+
+          findings_summary = ''
+
+          if findings and detection_failed:
+
+              rows = ''
+
+              for i, f in enumerate(findings[:5], 1):
+
+                  conf = int(f['confidence'])
+
+                  badge_color = '#c9190b' if conf >= 90 else '#f5a623' if conf >= 80 else '#6a6e73'
+
+                  rows += f'''
+
+                  <tr>
+
+                    <td style="padding:6px 10px;font-size:12px;font-weight:700;color:{badge_color}">{f["confidence"]}%</td>
+
+                    <td style="padding:6px 10px;font-size:11px;font-family:monospace;color:#151515">{f["file"]}</td>
+
+                    <td style="padding:6px 10px;font-size:11px;color:#6a6e73">{f["type"]}</td>
+
+                  </tr>'''
+
+
+
+              more = f'<p style="font-size:12px;color:#6a6e73;margin:8px 0 0">...and {len(findings)-5} more issues in the attached PDF report.</p>' if len(findings) > 5 else ''
+
+
+
+              findings_summary = f'''
+
+              <p style="font-size:12px;font-weight:700;color:#6a6e73;text-transform:uppercase;margin:20px 0 8px">
+
+                Top Findings (see PDF for all {len(findings)})
+
+              </p>
+
+              <table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0;margin-bottom:8px">
+
+                <tr style="background:#f5f5f5">
+
+                  <th style="padding:6px 10px;text-align:left;font-size:11px;color:#6a6e73;width:80px">Confidence</th>
+
+                  <th style="padding:6px 10px;text-align:left;font-size:11px;color:#6a6e73">File:Line</th>
+
+                  <th style="padding:6px 10px;text-align:left;font-size:11px;color:#6a6e73">Type</th>
+
+                </tr>
+
+                {rows}
+
+              </table>
+
+              {more}
+
+              <p style="font-size:12px;color:#6a6e73;margin:12px 0 0">
+
+                &#128196; <b>See attached PDF</b> for all findings with complete recommendations.
+
+              </p>'''
+
+
+
+          if overall_success:
+
+              bar = '#3e8635'
+
+              flag = '&#10003; PIPELINE SUCCEEDED - APPLICATION DEPLOYED'
+
+              subject = f'[DEPLOYED] {pipelinerun} | Linsoft DevSecOps'
+
+              main_box = f'''
+
+              <div style="background:#f0fff0;border:1px solid #3e8635;border-radius:6px;padding:16px;margin:20px 0">
+
+                <p style="color:#3e8635;font-weight:700;margin:0 0 8px">&#127881; All security gates passed</p>
+
+                <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+
+                  <tr><td style="padding:6px;color:#6a6e73;font-size:13px">App Status</td>
+
+                      <td style="padding:6px;color:#3e8635;font-weight:700">&#10003; {app_status}</td></tr>
+
+                  <tr><td style="padding:6px;color:#6a6e73;font-size:13px">ArgoCD</td>
+
+                      <td style="padding:6px;color:#3e8635;font-weight:700">&#10003; Synced + Healthy</td></tr>
+
+                  <tr><td style="padding:6px;color:#6a6e73;font-size:13px">App URL</td>
+
+                      <td style="padding:6px;font-size:13px"><a href="{app_url}">{app_url}</a></td></tr>
+
+                </table>
+
+                <a href="{app_url}" style="display:inline-block;background:#3e8635;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;margin-right:8px">&#127760; Open Application</a>
+
+                <a href="{console_url}" style="display:inline-block;background:#0066cc;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">&#128269; View Pipeline</a>
+
+              </div>'''
+
+          else:
+
+              bar = '#c9190b'
+
+              flag = f'&#128680; PIPELINE BLOCKED — {issues_count} Security Issue(s) Detected'
+
+              subject = f'[BLOCKED] {pipelinerun} | {issues_count} Security Issue(s) | Linsoft DevSecOps'
+
+              fn = failed_stage[0] if failed_stage else 'Unknown'
+
+              done = ', '.join(n for n, s in stages if s == 'Succeeded') or 'None'
+
+              left = ', '.join(n for n, s in stages if s not in ['Succeeded', 'Failed']) or 'None'
+
+              main_box = f'''
+
+              <div style="background:#fff5f5;border:1px solid #c9190b;border-radius:6px;padding:16px;margin:20px 0">
+
+                <p style="color:#c9190b;font-weight:700;margin:0 0 8px">&#128204; Pipeline blocked at: {fn}</p>
+
+                <p style="font-size:13px;color:#3c3c3c;margin:0 0 10px">
+
+                  <b>Completed:</b> {done}<br>
+
+                  <b>Pending:</b> {left}
+
+                </p>
+
+                <a href="{console_url}" style="display:inline-block;background:#c9190b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">&#128269; View Pipeline Logs</a>
+
+              </div>'''
+
+
+
+          html = f'''<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+
+          <body style="margin:0;padding:0;background:#f0f0f0;font-family:Arial,sans-serif">
+
+          <div style="max-width:700px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #d2d2d2">
+
+            <div style="background:#0066cc;padding:20px 28px">
+
+              <p style="color:#fff;font-size:18px;font-weight:700;margin:0">&#9881; OpenShift OKD - Pipeline Security Report</p>
+
+              <p style="color:#b3d4ff;font-size:12px;margin:4px 0 0">Linsoft DevSecOps Platform &bull; {timestamp}</p>
+
+            </div>
+
+            <div style="background:{bar};padding:10px 28px">
+
+              <span style="color:#fff;font-size:13px;font-weight:600">{flag}</span>
+
+            </div>
+
+            <div style="padding:24px 28px">
+
+              <p style="font-size:18px;font-weight:700;color:#151515;margin:0 0 4px">{pipelinerun}</p>
+
+              <p style="font-size:14px;color:#6a6e73;margin:0 0 20px">Pipeline execution security report</p>
+
+              <p style="font-size:12px;font-weight:700;color:#6a6e73;text-transform:uppercase;margin:0 0 8px">Stage Results</p>
+
+              <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+
+                <tr style="background:#f5f5f5">
+
+                  <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73">Stage</th>
+
+                  <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73">Status</th>
+
+                </tr>
+
+                {stages_rows}
+
+              </table>
+
+              {main_box}
+
+              {findings_summary}
+
+            </div>
+
+            <div style="background:#f5f5f5;padding:14px 28px;border-top:1px solid #e0e0e0">
+
+              <p style="font-size:11px;color:#6a6e73;margin:0">
+
+                Linsoft DevSecOps &bull; OpenShift OKD 4.20 SNO &bull; Detection & Recommendation Model
+
+              </p>
+
+            </div>
+
+          </div>
+
+          </body></html>'''
+
+
+
+          # ── SEND EMAIL ────────────────────────────────────────────────────────────────
+
+          msg = MIMEMultipart('mixed')
+
+          msg['Subject'] = subject
+
+          msg['From'] = 'yefa.attia@esprit.tn'
+
+          msg['To'] = 'yefa.attia@esprit.tn'
+
+
+
+          msg_body = MIMEMultipart('alternative')
+
+          msg_body.attach(MIMEText(html, 'html'))
+
+          msg.attach(msg_body)
+
+
+
+          # Attach PDF report
+
+          if detection_failed and pdf_generated:
+
+              try:
+
+                  with open(pdf_path, 'rb') as f:
+
+                      pdf_data = f.read()
+
+                  attachment = MIMEBase('application', 'pdf')
+
+                  attachment.set_payload(pdf_data)
+
+                  encoders.encode_base64(attachment)
+
+                  attachment.add_header('Content-Disposition', 'attachment',
+
+                                       filename=f'security-report-{pipelinerun}.pdf')
+
+                  msg.attach(attachment)
+
+                  print('PDF attached to email')
+
+              except Exception as e:
+
+                  print(f'Could not attach PDF: {e}')
+
+
+
+          try:
+
+              s = smtplib.SMTP('smtp.gmail.com', 587)
+
+              s.ehlo()
+
+              s.starttls()
+
+              s.login('yefa.attia@esprit.tn', 'xgtk sims dpby ulua')
+
+              s.sendmail('yefa.attia@esprit.tn', 'yefa.attia@esprit.tn', msg.as_string())
+
+              s.quit()
+
+              print('Email sent with PDF security report!')
+
+          except Exception as e:
+
+              print(f'Email error: {e}')
+
+    workspaces:
+    - name: source
+      workspace: source
   params:
-  - name: git-url
+  - default: https://github.com/20eva/pfe-linsoft.git
+    name: git-url
     type: string
-    default: https://github.com/20eva/pfe-linsoft.git
-  - name: git-revision
+  - default: sample-app
+    name: git-revision
     type: string
-    default: sample-app
-  - name: sonar-url
+  - default: http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000
+    name: sonar-url
     type: string
-    default: http://sonarqube-sonarqube-sonarqube.apps.sno.okd.local
-  - name: sonar-token
+  - default: sqa_b049ec82c7dec33a66637f4c0ae3d02770baa4da
+    name: sonar-token
     type: string
-    default: sqa_d51f6965f6610488cb7bc6ec7d3e627ef40fb593
-  - name: image-url
+  - default: image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api
+    name: image-url
     type: string
-    default: image-registry.openshift-image-registry.svc:5000/blog-app/blog-api
   tasks:
   - name: clone
-    taskSpec:
-      steps:
-      - name: clone
-        image: alpine/git
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          set -e
-          rm -rf /workspace/source/app 2>/dev/null || true
-          git clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app
-          echo Clone_SUCCESS
-      workspaces:
-      - name: output
-        mountPath: /workspace/source
     params:
     - name: git-url
       value: $(params.git-url)
     - name: git-revision
       value: $(params.git-revision)
+    taskSpec:
+      metadata: {}
+      spec: null
+      steps:
+      - args:
+        - |
+          set -e
+          rm -rf /workspace/source/app 2>/dev/null || true
+          git clone --branch sample-app --depth 1 https://20eva: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@github.com/20eva/pfe-linsoft.git /workspace/source/app
+          echo Clone_SUCCESS
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        image: alpine/git
+        name: clone
+      workspaces:
+      - mountPath: /workspace/source
+        name: output
     workspaces:
     - name: output
       workspace: source
   - name: build
-    runAfter: [clone]
+    runAfter:
+    - detection-recommendation
     taskSpec:
+      metadata: {}
+      spec: null
       steps:
-      - name: npm-build
-        image: node:18-alpine
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
+      - args:
+        - |-
           set -e
+
           cd /workspace/source/app
+
+          rm -rf node_modules 2>/dev/null || true
+
           npm install --legacy-peer-deps
+
           ./node_modules/.bin/nx build api --configuration=production
+
           echo BUILD_SUCCESS
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        image: node:18-alpine
+        name: npm-build
       workspaces:
-      - name: source
-        mountPath: /workspace/source
+      - mountPath: /workspace/source
+        name: source
     workspaces:
     - name: source
       workspace: source
   - name: sonarqube-scan
-    runAfter: [build]
-    taskSpec:
-      steps:
-      - name: scan
-        image: sonarsource/sonar-scanner-cli:latest
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          sonar-scanner \
-            -Dsonar.projectKey=nodejs-blog-api \
-            -Dsonar.sources=/workspace/source/app/src \
-            -Dsonar.host.url=$(params.sonar-url) \
-            -Dsonar.token=$(params.sonar-token) \
-            -Dsonar.projectBaseDir=/workspace/source/app \
-            -Dsonar.working.directory=/tmp/.scannerwork
-      workspaces:
-      - name: source
-        mountPath: /workspace/source
     params:
     - name: sonar-url
       value: $(params.sonar-url)
     - name: sonar-token
       value: $(params.sonar-token)
+    runAfter:
+    - build
+    taskSpec:
+      metadata: {}
+      spec: null
+      steps:
+      - args:
+        - |-
+          set -e
+
+          mkdir -p /tmp/sonar-work
+
+          chmod 777 /tmp/sonar-work
+
+          cd /tmp
+
+          sonar-scanner
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        env:
+        - name: SONAR_TOKEN
+          value: sqa_4cf6d79cc5d38684e3a61dd017f231b69034f6e0
+        - name: SONAR_HOST_URL
+          value: http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000
+        - name: SONAR_SCANNER_OPTS
+          value: -Dsonar.projectKey=nodejs-blog-api -Dsonar.projectName=nodejs-blog-api
+            -Dsonar.projectBaseDir=/workspace/source/app -Dsonar.sources=src -Dsonar.working.directory=/tmp/sonar-work
+            -Dsonar.scm.disabled=true
+        image: sonarsource/sonar-scanner-cli:11
+        name: scan
+      workspaces:
+      - mountPath: /workspace/source
+        name: source
     workspaces:
     - name: source
       workspace: source
   - name: quality-gate
-    runAfter: [sonarqube-scan]
-    taskRef:
-      name: quality-gate-check
     params:
     - name: sonar-url
       value: $(params.sonar-url)
@@ -102,39 +1047,61 @@ spec:
       value: $(params.sonar-token)
     - name: project-key
       value: nodejs-blog-api
+    runAfter:
+    - sonarqube-scan
+    taskRef:
+      kind: Task
+      name: quality-gate-check
   - name: docker-build
-    runAfter: [quality-gate]
-    taskSpec:
-      steps:
-      - name: build-push
-        image: quay.io/buildah/stable:latest
-        securityContext:
-          privileged: true
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          set -e
-          cd /workspace/source/app
-          buildah build --tls-verify=false -t $(params.image-url):latest .
-          buildah push --tls-verify=false $(params.image-url):latest
-          echo DOCKER_BUILD_SUCCESS
-      workspaces:
-      - name: source
-        mountPath: /workspace/source
     params:
     - name: image-url
       value: $(params.image-url)
+    runAfter:
+    - quality-gate
+    taskSpec:
+      metadata: {}
+      spec: null
+      steps:
+      - args:
+        - |-
+          set -e
+
+          cd /workspace/source/app
+
+          TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+          buildah login --tls-verify=false -u serviceaccount -p $TOKEN image-registry.openshift-image-registry.svc.cluster.local:5000
+
+          buildah build --tls-verify=false -t image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api:latest .
+
+          buildah push --tls-verify=false --creds serviceaccount:$TOKEN image-registry.openshift-image-registry.svc.cluster.local:5000/blog-app/blog-api:latest
+
+          echo DOCKER_BUILD_SUCCESS
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        image: quay.io/buildah/stable:latest
+        name: build-push
+        securityContext:
+          privileged: true
+      workspaces:
+      - mountPath: /workspace/source
+        name: source
     workspaces:
     - name: source
       workspace: source
   - name: trivy-scan
-    runAfter: [docker-build]
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    runAfter:
+    - docker-build
     taskSpec:
+      metadata: {}
+      spec: null
       steps:
-      - name: scan
-        image: aquasec/trivy:latest
-        command: ["/bin/sh", "-c"]
-        args:
+      - args:
         - |
           trivy image \
             --insecure \
@@ -143,32 +1110,180 @@ spec:
             --format table \
             $(params.image-url):latest
           echo TRIVY_SCAN_COMPLETE
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        image: aquasec/trivy:latest
+        name: scan
+  - name: cosign-sign
     params:
     - name: image-url
       value: $(params.image-url)
-  - name: cosign-sign
-    runAfter: [trivy-scan]
+    runAfter:
+    - trivy-scan
     taskSpec:
+      metadata: {}
+      spec: null
       steps:
-      - name: sign
-        image: bitnami/cosign:latest
-        command: ["/bin/sh", "-c"]
-        args:
+      - args:
         - |
           COSIGN_PASSWORD=userOcp123 cosign sign \
             --key /etc/cosign/cosign.key \
             --allow-insecure-registry \
             $(params.image-url):latest
           echo IMAGE_SIGNED_SUCCESS
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        image: bitnami/cosign:latest
+        name: sign
         volumeMounts:
-        - name: cosign-key
-          mountPath: /etc/cosign
+        - mountPath: /etc/cosign
+          name: cosign-key
       volumes:
       - name: cosign-key
         secret:
           secretName: cosign-key-secret
+  - name: deploy
+    runAfter:
+    - request-approval
+    taskSpec:
+      metadata: {}
+      spec: null
+      steps:
+      - args:
+        - |+
+          set -e
+
+          ARGOCD_TOKEN=$(curl -sk -X POST https://argocd-argocd.apps.sno.okd.local/api/v1/session -H 'Content-Type: application/json' -d '{"username":"admin","password":"mWE03K2-727glxce"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+          echo "Got ArgoCD token"
+
+          curl -sk -X POST https://argocd-argocd.apps.sno.okd.local/api/v1/applications/blog-api/sync -H "Authorization: Bearer $ARGOCD_TOKEN" -H "Content-Type: application/json" -d '{"prune":true}'
+
+          echo DEPLOY_TRIGGERED
+
+        command:
+        - /bin/sh
+        - -c
+        computeResources: {}
+        env:
+        - name: ARGOCD_TOKEN
+          value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsImV4cCI6MTc4NjM1OTgwNCwibmJmIjoxNzg2MjczNDA0LCJpYXQiOjE3ODYyNzM0MDQsImp0aSI6ImM1YjRhMGFhLTNkMDAtNDRiNi05ZmI2LTRlYTA4YmM3YWI3OSJ9.qp5pkbb7BYJ_R-Z6YI14RtY-fuEK6jDzw-fw-fyKl8k
+        image: alpine/curl:latest
+        name: argocd-sync
+  - name: request-approval
     params:
+    - name: pipelinerun-name
+      value: $(context.pipelineRun.name)
     - name: image-url
       value: $(params.image-url)
+    runAfter:
+    - cosign-sign
+    taskSpec:
+      metadata: {}
+      params:
+      - name: pipelinerun-name
+        type: string
+      - name: image-url
+        type: string
+      spec: null
+      steps:
+      - computeResources: {}
+        env:
+        - name: PIPELINERUN_NAME
+          value: $(params.pipelinerun-name)
+        - name: IMAGE_URL
+          value: $(params.image-url)
+        image: python:3.11-slim
+        name: send-approval-email
+        script: "#!/usr/bin/env python3\n\nimport smtplib\n\nimport os\n\nimport time\n\nimport
+          uuid\n\nimport urllib.request\n\nimport json\n\nfrom email.mime.multipart
+          import MIMEMultipart\n\nfrom email.mime.text import MIMEText\n\n\n\npipelinerun
+          = os.environ.get('PIPELINERUN_NAME', 'unknown')\n\nimage_url = os.environ.get('IMAGE_URL',
+          'unknown')\n\n\n\n# Generate unique token\n\ntoken = str(uuid.uuid4())[:8]\n\n\n\n#
+          Approval server URL\n\napproval_host = '192.168.1.6:8888'\n\napprove_url
+          = f'http://{approval_host}/approve?token={token}&action=approve'\n\nreject_url
+          = f'http://{approval_host}/approve?token={token}&action=reject'\n\nstatus_url
+          = f'http://{approval_host}/status?token={token}'\n\nconsole_url = f'https://console-openshift-console.apps.sno.okd.local/k8s/ns/blog-app/tekton.dev~v1~PipelineRun/{pipelinerun}'\n\n\n\nhtml
+          = f'''<!DOCTYPE html>\n\n<html><head><meta charset=\"UTF-8\"></head>\n\n<body
+          style=\"margin:0;padding:0;background:#f0f0f0;font-family:Arial,sans-serif\">\n\n<div
+          style=\"max-width:600px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px
+          solid #d2d2d2\">\n\n  <div style=\"background:#0066cc;padding:20px 28px\">\n\n
+          \   <p style=\"color:#fff;font-size:18px;font-weight:700;margin:0\">Deployment
+          Approval Required</p>\n\n    <p style=\"color:#b3d4ff;font-size:12px;margin:4px
+          0 0\">Linsoft DevSecOps Platform</p>\n\n  </div>\n\n  <div style=\"background:#f5a623;padding:10px
+          28px\">\n\n    <span style=\"color:#fff;font-size:13px;font-weight:600\">&#9888;
+          WAITING FOR YOUR APPROVAL TO DEPLOY</span>\n\n  </div>\n\n  <div style=\"padding:24px
+          28px\">\n\n    <p style=\"font-size:16px;font-weight:700;color:#151515\">Pipeline:
+          {pipelinerun}</p>\n\n    <p style=\"font-size:13px;color:#6a6e73;margin:0
+          0 20px\">All 7 security gates passed. The image is ready to deploy. Your
+          approval is required to proceed.</p>\n\n    \n\n    <table style=\"width:100%;border-collapse:collapse;margin-bottom:20px\">\n\n
+          \     <tr style=\"background:#f5f5f5\">\n\n        <th style=\"padding:8px
+          12px;text-align:left;font-size:12px;color:#6a6e73\">Check</th>\n\n        <th
+          style=\"padding:8px 12px;text-align:left;font-size:12px;color:#6a6e73\">Status</th>\n\n
+          \     </tr>\n\n      <tr><td style=\"padding:8px 12px;font-size:13px\">Clone</td><td
+          style=\"padding:8px 12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n
+          \     <tr><td style=\"padding:8px 12px;font-size:13px\">Build</td><td style=\"padding:8px
+          12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n      <tr><td
+          style=\"padding:8px 12px;font-size:13px\">SonarQube</td><td style=\"padding:8px
+          12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n      <tr><td
+          style=\"padding:8px 12px;font-size:13px\">Quality Gate</td><td style=\"padding:8px
+          12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n      <tr><td
+          style=\"padding:8px 12px;font-size:13px\">Docker Build</td><td style=\"padding:8px
+          12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n      <tr><td
+          style=\"padding:8px 12px;font-size:13px\">Trivy Scan</td><td style=\"padding:8px
+          12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n      <tr><td
+          style=\"padding:8px 12px;font-size:13px\">Cosign Sign</td><td style=\"padding:8px
+          12px;color:#3e8635;font-weight:700\">&#10003; Passed</td></tr>\n\n      <tr
+          style=\"background:#fff8e1\"><td style=\"padding:8px 12px;font-size:13px\">Deploy</td><td
+          style=\"padding:8px 12px;color:#f5a623;font-weight:700\">&#9888; Waiting
+          Approval</td></tr>\n\n    </table>\n\n\n\n    <div style=\"background:#f5f5f5;border-radius:6px;padding:14px;margin-bottom:20px\">\n\n
+          \     <p style=\"font-size:13px;font-weight:700;margin:0 0 8px\">Image Details</p>\n\n
+          \     <p style=\"font-size:12px;color:#6a6e73;margin:0\">Image: {image_url}</p>\n\n
+          \     <p style=\"font-size:12px;color:#6a6e73;margin:4px 0 0\">Token: {token}</p>\n\n
+          \   </div>\n\n\n\n    <div style=\"text-align:center;margin:24px 0\">\n\n
+          \     <a href=\"{approve_url}\" style=\"display:inline-block;background:#3e8635;color:#fff;padding:14px
+          32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:16px;margin-right:16px\">\n\n
+          \       &#10003; APPROVE DEPLOYMENT\n\n      </a>\n\n      <a href=\"{reject_url}\"
+          style=\"display:inline-block;background:#c9190b;color:#fff;padding:14px
+          32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:16px\">\n\n
+          \       &#10007; REJECT\n\n      </a>\n\n    </div>\n\n\n\n    <p style=\"font-size:12px;color:#6a6e73;text-align:center\">\n\n
+          \     This approval will expire in 1 hour. \n\n      <a href=\"{console_url}\">View
+          Pipeline</a>\n\n    </p>\n\n  </div>\n\n  <div style=\"background:#f5f5f5;padding:14px
+          28px;border-top:1px solid #e0e0e0\">\n\n    <p style=\"font-size:11px;color:#6a6e73;margin:0\">Linsoft
+          DevSecOps &bull; Pipeline Approval &bull; Do not reply</p>\n\n  </div>\n\n</div>\n\n</body></html>'''\n\n\n\n#
+          Send email\n\nmsg = MIMEMultipart('alternative')\n\nmsg['Subject'] = f'[APPROVAL
+          REQUIRED] Deploy {pipelinerun} | Linsoft DevSecOps'\n\nmsg['From'] = 'yefa.attia@esprit.tn'\n\nmsg['To']
+          = 'yefa.attia@esprit.tn'\n\nmsg.attach(MIMEText(html, 'html'))\n\n\n\ntry:\n\n
+          \   s = smtplib.SMTP('smtp.gmail.com', 587)\n\n    s.ehlo(); s.starttls()\n\n
+          \   s.login('yefa.attia@esprit.tn', 'xgtk sims dpby ulua')\n\n    s.sendmail('yefa.attia@esprit.tn',
+          'yefa.attia@esprit.tn', msg.as_string())\n\n    s.quit()\n\n    print(f'Approval
+          email sent. Token: {token}')\n\nexcept Exception as e:\n\n    print(f'Email
+          error: {e}')\n\n\n\n# Poll for approval (max 1 hour)\n\nprint('Waiting for
+          approval...')\n\ntimeout = 3600\n\ninterval = 30\n\nelapsed = 0\n\n\n\nwhile
+          elapsed < timeout:\n\n    try:\n\n        req = urllib.request.urlopen(status_url,
+          timeout=5)\n\n        result = json.loads(req.read().decode())\n\n        action
+          = result.get('action', 'pending')\n\n        \n\n        if action == 'approve':\n\n
+          \           print('APPROVED - proceeding to deployment')\n\n            exit(0)\n\n
+          \       elif action == 'reject':\n\n            print('REJECTED - deployment
+          cancelled')\n\n            exit(1)\n\n        else:\n\n            print(f'Still
+          waiting... ({elapsed}s elapsed)')\n\n    except Exception as e:\n\n        print(f'Polling
+          error: {e}')\n\n    \n\n    time.sleep(interval)\n\n    elapsed += interval\n\n\n\nprint('TIMEOUT
+          - no approval received')\n\nexit(1)\n\n"
+  - name: detection-recommendation
+    params:
+    - name: threshold
+      value: "0.85"
+    runAfter:
+    - clone
+    taskRef:
+      kind: Task
+      name: detection-recommendation-scan
+    workspaces:
+    - name: source
+      workspace: source
   workspaces:
   - name: source

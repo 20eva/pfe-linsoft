@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "4"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"name":"detection-recommendation-svc","namespace":"blog-app"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"detection-recommendation-svc"}},"template":{"metadata":{"labels":{"app":"detection-recommendation-svc"}},"spec":{"containers":[{"image":"image-registry.openshift-image-registry.svc:5000/blog-app/detection-recommendation-model:latest","name":"detection-model","ports":[{"containerPort":5000}],"resources":{"limits":{"cpu":"500m","memory":"1Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}}]}}}}
+  creationTimestamp: "2026-09-28T10:27:32Z"
+  generation: 4
+  name: detection-recommendation-svc
+  namespace: blog-app
+  resourceVersion: "27171794"
+  uid: 8775b69c-7e99-4862-8632-943ca0eb6177
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: detection-recommendation-svc
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-09-28T11:54:15+01:00"
+      creationTimestamp: null
+      labels:
+        app: detection-recommendation-svc
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/blog-app/detection-recommendation-model:latest
+        imagePullPolicy: Always
+        name: detection-model
+        ports:
+        - containerPort: 5000
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2026-09-28T10:27:41Z"
+    lastUpdateTime: "2026-09-28T10:27:41Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2026-09-28T10:27:33Z"
+    lastUpdateTime: "2026-09-28T10:54:26Z"
+    message: ReplicaSet "detection-recommendation-svc-6d4f8fbc4d" has successfully
+      progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 4
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

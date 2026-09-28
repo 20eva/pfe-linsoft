@@ -1,0 +1,162 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  creationTimestamp: "2026-09-26T17:10:40Z"
+  generation: 6
+  name: detection-recommendation-scan
+  namespace: blog-app
+  resourceVersion: "27182083"
+  uid: e87e7075-ebcd-48ad-b3fe-8861403db7ad
+spec:
+  params:
+  - default: "0.85"
+    name: threshold
+    type: string
+  steps:
+  - computeResources: {}
+    image: python:3.11-slim
+    name: run-detection
+    script: |
+      #!/usr/bin/env python3
+
+      import urllib.request
+
+      import json
+
+      import sys
+
+
+
+      print("================================================")
+
+      print("   Detection & Recommendation Model")
+
+      print("   Scanning Ansible Playbooks for Issues")
+
+      print("================================================")
+
+      print()
+
+
+
+      threshold = float("$(params.threshold)")
+
+      service_url = "http://detection-recommendation-svc.blog-app.svc.cluster.local:5000"
+
+
+
+      try:
+
+          r = urllib.request.urlopen(f"{service_url}/health", timeout=10)
+
+          print("Detection service: READY")
+
+      except Exception as e:
+
+          print(f"Detection service not available: {e}")
+
+          sys.exit(1)
+
+
+
+      print(f"Scanning playbooks with threshold {threshold}...")
+
+      print()
+
+
+
+      data = json.dumps({"threshold": threshold}).encode()
+
+      req = urllib.request.Request(
+
+          f"{service_url}/scan",
+
+          data=data,
+
+          headers={"Content-Type": "application/json"},
+
+          method="POST"
+
+      )
+
+
+
+      try:
+
+          r = urllib.request.urlopen(req, timeout=300)
+
+          result = json.loads(r.read().decode())
+
+      except Exception as e:
+
+          print(f"Scan failed: {e}")
+
+          sys.exit(1)
+
+
+
+      blocked = result.get("blocked", False)
+
+      issues_count = result.get("issues_count", 0)
+
+      findings = result.get("findings", [])
+
+
+
+      if findings:
+
+          print(f"Found {len(findings)} potential issue(s):")
+
+          print()
+
+          for f in findings:
+
+              print(f"[{f['confidence']}% confidence] {f['file']}")
+
+              print(f"    Type: {f['type']}")
+
+              print(f"    Line: {f['line']}")
+
+              print(f"    Recommendation: {f['recommendation']}")
+
+              print()
+
+
+
+      with open("$(workspaces.source.path)/scan-results.json", "w") as fp:
+
+          json.dump(result, fp)
+
+
+
+      with open("$(workspaces.source.path)/scan-results.txt", "w") as fp:
+
+          fp.write(result.get("raw_output", ""))
+
+
+
+      if blocked:
+
+          print("================================================")
+
+          print(f"   SCAN RESULT: BLOCKED - {issues_count} issue(s)")
+
+          print("   Fix the findings above and push again")
+
+          print("================================================")
+
+          sys.exit(1)
+
+      else:
+
+          print("================================================")
+
+          print("   SCAN RESULT: PASSED")
+
+          print("   No issues found - Pipeline continues")
+
+          print("================================================")
+
+          sys.exit(0)
+  workspaces:
+  - name: source
